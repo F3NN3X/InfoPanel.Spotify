@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("InfoPanel.Spotify")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4ae7092666a4e46b308ac6c2716c559d0a165a05")]
 [assembly: System.Reflection.AssemblyProductAttribute("InfoPanel.Spotify")]
 [assembly: System.Reflection.AssemblyTitleAttribute("InfoPanel.Spotify")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
