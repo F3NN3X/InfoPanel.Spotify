@@ -1,10 +1,13 @@
 # Spotify Info - SpotifyPlugin
 
 - **Plugin**: Spotify Info - SpotifyPlugin
-- **Version**: 1.0.23
+- **Version**: 1.0.40
 - **Description**: A plugin for InfoPanel to display current Spotify track information, including track name, artist, cover URL, elapsed time, and remaining time. Utilizes the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls to minimize overhead. Supports `PluginSensor` for track progression and `PluginText` for cover URL display.
 
 ## Changelog
+- ***v1.0.40 (Feb 21, 2025): Added configurable character cutoff to v1.0.23.
+  - **Features: Added MaxDisplayLength in .ini (default 20), appends "..." for long titles.
+  - **Purpose: Enhance v1.0.23 with truncation while preserving original functionality.
 
 - **v1.0.23 (Feb 20, 2025)**: Changed `_coverUrl` ID to `"cover-art"` for image recognition.
   - **Changes**: Renamed `_coverUrl`'s ID to `"cover-art"` to align with the original `_coverArt` naming, using the raw Spotify URL. Kept `_coverArt` code commented out for reference.
