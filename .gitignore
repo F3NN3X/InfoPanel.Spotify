@@ -2,5 +2,5 @@
 **/.*/
 
 # Ignore bin and obj folders anywhere in the project
-**/bin/
-**/obj/
+**/**/bin/
+**/**/obj/
