@@ -1,86 +1,53 @@
-# Spotify Info - SpotifyPlugin
+# SpotifyPlugin for InfoPanel
 
-- **Plugin**: Spotify Info - SpotifyPlugin
-- **Version**: 1.0.40
-- **Description**: A plugin for InfoPanel to display current Spotify track information, including track name, artist, cover URL, elapsed time, and remaining time. Utilizes the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls to minimize overhead. Supports `PluginSensor` for track progression and `PluginText` for cover URL display.
+A plugin for InfoPanel to display real-time Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time.
 
-## Changelog
+## Features
 
-- v1.0.40 (Feb 21, 2025): Added configurable character cutoff to v1.0.23.
-  - Features: Added MaxDisplayLength in .ini (default 20), appends "..." for long titles.
-  - Purpose: Enhance v1.0.23 with truncation while preserving original functionality.
+- Displays current track details: title, artist, album, cover art URL, elapsed/remaining time, and progress percentage.
+- Configurable title truncation via `MaxDisplayLength` in `.ini` file (default: 20 characters).
+- Robust pause, resume, and track end detection with visual indicators.
+- Optimized API usage with caching and rate limiting (180 req/min, 10 req/s).
+- PKCE authentication with Spotify Web API for secure token management.
 
-- **v1.0.23 (Feb 20, 2025)**: Changed `_coverUrl` ID to `"cover-art"` for image recognition.
-  - **Changes**: Renamed `_coverUrl`'s ID to `"cover-art"` to align with the original `_coverArt` naming, using the raw Spotify URL. Kept `_coverArt` code commented out for reference.
-  - **Purpose**: Signals InfoPanel to render `_coverUrl` as an image without requiring changes to the core InfoPanel codebase.
+## Requirements
 
-- **v1.0.22 (Feb 20, 2025)**: Appended `.jpg` to `_coverUrl` for image display.
-  - **Changes**: Added `.jpg` extension to the raw Spotify URL in `_coverUrl.Value` to ensure proper image rendering.
+- .NET 8.0
+- InfoPanel application
+- Spotify API client ID and **redirect URI** (see instructions below on how to obtain these)
+- Dependencies: `SpotifyAPI.Web`, `IniParser`
 
-- **v1.0.21 (Feb 20, 2025)**: Commented out `_coverArt` code, retained `_coverUrl` with raw URL.
-  - **Changes**: Re-commented all `_coverArt`-related code to disable it, ensured `_coverUrl` uses the raw Spotify URL without modifications.
+## Installation
 
-- **v1.0.20 (Feb 20, 2025)**: Reverted `_coverIconUrl` to `_coverUrl` and restored `_coverArt` code.
-  - **Changes**: Renamed the field back to `_coverUrl`, set it to the raw Spotify URL, and uncommented `_coverArt` code for potential reuse.
+1. **Build**: Compile `InfoPanel.Spotify.csproj` to generate `InfoPanel.Spotify.dll`.
+2. **Install**: Place the `InfoPanel.Spotify.dll` in InfoPanel’s plugin directory. This directory is typically found in the InfoPanel application's data directory.
+3. **Configure**: On first run, the plugin creates `InfoPanel.Spotify.dll.ini`. You **must** replace `<your-spotify-api-key>` with your Spotify API client ID and configure the Redirect URI (see below).
+4. **Authenticate**: After configuring your API key and redirect URI, run InfoPanel. Follow the browser prompt to authorize the plugin with Spotify. This process will generate a refresh token that will be saved in your `.ini` file. Do not edit this token manually.
 
-- **v1.0.19 (Feb 20, 2025)**: Renamed `_coverUrl` to `_coverIconUrl` for image display compatibility.
-  - **Changes**: Adjusted the field ID to `"cover_icon_url"` to match the naming convention used in WeatherPlugin for image handling.
 
-- **v1.0.18 (Feb 20, 2025)**: Commented out `_coverArt`-related code.
-  - **Changes**: Removed local cover art downloading and caching logic, shifted focus to using `_coverUrl` exclusively.
+## Obtaining Your Spotify API Key and Redirect URI
 
-- **v1.0.17 (Feb 20, 2025)**: Fixed cover URL display and track change update.
-  - **Fixes**: Reverted to using the raw `coverArtUrl` for `_coverUrl.Value`, ensured updates occur reliably on track changes.
+This plugin uses the Spotify Web API's PKCE authentication flow. To use this plugin, you'll need to register an application on the Spotify Developer Dashboard:
 
-- **v1.0.16 (Feb 20, 2025)**: Fixed cover URL update on track change with dynamic construction.
-  - **Fixes**: Implemented dynamic URL construction (`https://i.scdn.co/image/{imageId}`) to ensure the cover URL updates correctly.
+1. **Go to the Spotify Developer Dashboard:** Visit [https://developer.spotify.com/dashboard/](https://developer.spotify.com/dashboard/). You may need to create a Spotify account if you don't already have one.
+2. **Create a New App:** Click the "Create App" button.
+3. **Fill Out the Application Details:** Provide a name and description for your app. You can choose any name and description; they don't directly affect the plugin's functionality.
+4. **Redirect URI:**  **This is crucial.** Enter `http://localhost:5000/callback`  in the Redirect URIs field.  This is the callback URL used by the embedded authentication server.
+5. **Save and Get Your Client ID:** After creating the app, you'll find your "Client ID" in the app's dashboard. **Copy this Client ID**.
+6. **Configure Your Plugin:**  Paste the copied "Client ID" into your `InfoPanel.Spotify.dll.ini` file under `APIKey`.
 
-- **v1.0.15 (Feb 20, 2025)**: Fixed cover URL display.
-  - **Fixes**: Ensured `_coverUrl.Value` consistently receives the raw Spotify URL for proper display.
+## Usage
 
-- **v1.0.14 (Feb 20, 2025)**: Added `PluginText` for cover art URL.
-  - **Features**: Introduced `_coverUrl` to store and display the raw Spotify cover art URL in the UI.
+- Activate the plugin in InfoPanel.
+- Play music in Spotify; track details will appear in the InfoPanel UI.
+- Deactivate and reactivate as needed—no freezes, even with existing `.ini`.
 
-- **v1.0.13 (Feb 20, 2025)**: Replaced total track time with track progression percentage (fixed float compatibility).
-  - **Features**: Added `_trackProgress` as a `PluginSensor` (0-100%, float) to show dynamic playback progress.
-  - **Fixes**: Changed `_trackProgress.Value` from `double` to `float` to match `PluginSensor` requirements.
+## Configuration
 
-- **v1.0.12 (Feb 20, 2025)**: Fixed dynamic total track time update.
-  - **Fixes**: Ensured `_totalTrackTime` updates every 1 second to reflect the static track duration.
+Edit `InfoPanel.Spotify.dll.ini`:
 
-- **v1.0.11 (Feb 20, 2025)**: Added `PluginSensor` for total track time.
-  - **Features**: Introduced `_totalTrackTime` to display the track duration in milliseconds.
-
-- **v1.0.10 (Feb 20, 2025)**: Added resume animation and track end refinement.
-  - **Features**: Displays `"Resuming..."` for 1 second during resume; shows `"Track Ended"` for 3 seconds at track completion.
-
-- **v1.0.9 (Feb 20, 2025)**: Added visual pause indication.
-  - **Features**: Sets track name and artist to `"Paused"` when playback is paused.
-
-- **v1.0.8 (Feb 20, 2025)**: Fixed pause detection timing.
-  - **Fixes**: Increased `ProgressToleranceMs` to 1500ms for more reliable pause detection; moved pause check to align with API sync.
-
-- **v1.0.7 (Feb 20, 2025)**: Reliable pause freeze attempt.
-  - **Fixes**: Implemented local pause detection using a `_pauseDetected` flag to improve reliability.
-
-- **v1.0.6 (Feb 20, 2025)**: Robust pause detection attempt.
-  - **Fixes**: Simplified pause detection logic and forced API sync when a stall is detected.
-
-- **v1.0.5 (Feb 20, 2025)**: Adjusted pause detection.
-  - **Fixes**: Moved pause check to execute before progress estimation for better accuracy.
-
-- **v1.0.4 (Feb 20, 2025)**: Pause detection enhancement.
-  - **Features**: Added pause detection between API syncs to catch pauses more effectively.
-
-- **v1.0.3 (Feb 20, 2025)**: Responsiveness improvement.
-  - **Features**: Reduced sync interval to 2 seconds; forced sync when a track ends for immediate updates.
-
-- **v1.0.2 (Feb 20, 2025)**: Performance optimization.
-  - **Features**: Implemented caching to reduce API calls to every 5 seconds; added cover art caching for efficiency.
-
-- **v1.0.1**: Beta release with core functionality.
-- **v1.0.0**: Internal pre-release.
-
-## Notes
-
-- Spotify API rate limits are estimated at approximately 180 requests per minute. For more details, see the [Spotify Web API Rate Limits documentation](https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
+```ini
+[Spotify Plugin]
+APIKey=<your-spotify-api-key>  // Obtained from the Spotify Developer Dashboard
+MaxDisplayLength=20             // Optional: Adjust the maximum number of characters displayed for track, artist, and album names.
+RefreshToken=<auto-generated>  // Do not modify this; it's automatically generated during authentication.

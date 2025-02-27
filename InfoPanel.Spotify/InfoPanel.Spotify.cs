@@ -19,78 +19,30 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.40
- * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and PluginText for cover URL.
+ * Version: 1.0.46
+ * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and PluginText for cover URL.
  * Changelog:
- *   - v1.0.40 (Feb 21, 2025): Added configurable character cutoff to v1.0.23.
- *     - Features: Added MaxDisplayLength in .ini (default 20), appends "..." for long titles.
- *     - Purpose: Enhance v1.0.23 with truncation while preserving original functionality.
- *   - v1.0.23 (Feb 20, 2025): Changed _coverUrl ID to "cover-art" for image recognition.
- *     - Changes: Renamed _coverUrl's ID to "cover-art" to match original _coverArt, using raw Spotify URL, kept _coverArt commented out.
- *     - Purpose: Signal InfoPanel to render _coverUrl as an image without core file changes.
- *   - v1.0.22 (Feb 20, 2025): Appended .jpg to _coverUrl for image display.
- *     - Changes: Added .jpg extension to raw Spotify URL in _coverUrl.Value.
- *   - v1.0.21 (Feb 20, 2025): Commented out _coverArt code, kept _coverUrl with raw URL.
- *     - Changes: Re-commented all _coverArt-related code, ensured _coverUrl uses raw Spotify URL.
- *   - v1.0.20 (Feb 20, 2025): Reverted _coverIconUrl to _coverUrl and restored _coverArt code.
- *     - Changes: Renamed back to _coverUrl, set raw Spotify URL, uncommented _coverArt code.
- *   - v1.0.19 (Feb 20, 2025): Renamed _coverUrl to _coverIconUrl for image display compatibility.
- *     - Changes: Adjusted field ID to "cover_icon_url" to match WeatherPlugin's naming.
- *   - v1.0.18 (Feb 20, 2025): Commented out _coverArt-related code.
- *     - Changes: Removed local cover art download and caching, focusing on _coverUrl.
- *   - v1.0.17 (Feb 20, 2025): Fixed cover URL display and track change update.
- *     - Fixes: Reverted to raw coverArtUrl for _coverUrl.Value, ensured update on track change.
- *   - v1.0.16 (Feb 20, 2025): Fixed cover URL update on track change with dynamic construction.
- *     - Fixes: Used dynamic URL construction (https://i.scdn.co/image/{imageId}).
- *   - v1.0.15 (Feb 20, 2025): Fixed cover URL display.
- *     - Fixes: Ensured _coverUrl.Value always gets the raw Spotify URL.
- *   - v1.0.14 (Feb 20, 2025): Added PluginText for cover art URL.
- *     - Features: Added _coverUrl to store and display the raw Spotify cover art URL.
- *   - v1.0.13 (Feb 20, 2025): Replaced total track time with track progression percentage (fixed float compatibility).
- *     - Features: Added _trackProgress as PluginSensor (0-100%, float) for dynamic playback progress.
- *     - Fixes: Changed _trackProgress.Value to float from double for PluginSensor compatibility.
- *   - v1.0.12 (Feb 20, 2025): Fixed dynamic total track time update.
- *     - Fixes: Ensured _totalTrackTime updated every 1 second (static value).
- *   - v1.0.11 (Feb 20, 2025): Added PluginSensor for total track time.
- *     - Features: Added _totalTrackTime for track duration in milliseconds.
- *   - v1.0.10 (Feb 20, 2025): Added resume animation and track end refinement.
- *     - Features: Shows "Resuming..." for 1 second; "Track Ended" for 3 seconds.
- *   - v1.0.9 (Feb 20, 2025): Added visual pause indication.
- *     - Features: Sets track and artist to "Paused" when paused.
- *   - v1.0.8 (Feb 20, 2025): Fixed pause detection timing.
- *     - Fixes: Widened ProgressToleranceMs to 1500ms; moved pause check to API sync.
- *   - v1.0.7 (Feb 20, 2025): Reliable pause freeze attempt.
- *     - Fixes: Local pause detection with _pauseDetected flag.
- *   - v1.0.6 (Feb 20, 2025): Robust pause detection attempt.
- *     - Fixes: Simplified pause detection, forced sync on stall.
- *   - v1.0.5 (Feb 20, 2025): Adjusted pause detection.
- *     - Fixes: Moved pause check before estimation.
- *   - v1.0.4 (Feb 20, 2025): Pause detection enhancement.
- *     - Features: Added pause detection between syncs.
- *   - v1.0.3 (Feb 20, 2025): Responsiveness improvement.
- *     - Features: Sync interval to 2 seconds; forced sync on track end.
- *   - v1.0.2 (Feb 20, 2025): Performance optimization.
- *     - Features: Caching reduced API calls to 5 seconds; cover art caching.
- *   - v1.0.1: Beta release with core functionality.
- *   - v1.0.0: Internal pre-release.
+ *   - v1.0.46 (Feb 27, 2025): Fixed .ini file locking on reload and CS8604 warning.
+ *     - Changes: Replaced ReadFile with FileStream and StreamReader using FileShare.Read to avoid locking, removed unnecessary parser.Dispose(), added null suppression (!) to _configFilePath to silence CS8604.
+ *     - Purpose: Prevent freezes when reactivating the plugin with an existing .ini file and ensure clean compile.
+ *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
 
-namespace InfoPanel.Extras
+namespace InfoPanel.Spotify
 {
-    // Displays current Spotify track information in the InfoPanel application.
     public class SpotifyPlugin : BasePlugin
     {
         // UI display elements (PluginText)
         private readonly PluginText _currentTrack = new("current-track", "Current Track", "-");
         private readonly PluginText _artist = new("artist", "Artist", "-");
-        //private readonly PluginText _coverArt = new("cover-art", "Cover Art", "-"); // Commented out
+        private readonly PluginText _album = new("album", "Album", "-");
         private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00");
         private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00");
-        private readonly PluginText _coverUrl = new("cover-art", "Cover URL", ""); // Using "cover-art" ID with raw Spotify URL
+        private readonly PluginText _coverUrl = new("cover-art", "Cover URL", "");
 
         // UI display elements (PluginSensor)
-        private readonly PluginSensor _trackProgress = new("track-progress", "Track Progress (%)", 0.0F); // 0 to 100%, float
+        private readonly PluginSensor _trackProgress = new("track-progress", "Track Progress (%)", 0.0F);
 
         // Spotify API and authentication
         private SpotifyClient? _spotifyClient;
@@ -101,40 +53,45 @@ namespace InfoPanel.Extras
         private string? _refreshToken;
 
         // Rate limiter for API calls
-        private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1));
+        private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1), 10, TimeSpan.FromSeconds(1));
 
-        // Cache for playback state and cover art
-        private string? _lastTrackId; // Last known track ID
-        private int _lastProgressMs; // Last known progress in milliseconds
-        private int _previousProgressMs; // Progress from the previous sync
-        private int _lastDurationMs; // Last known track duration in milliseconds
-        private bool _isPlaying; // Whether the track was playing at last sync
-        private DateTime _lastApiCallTime = DateTime.MinValue; // Time of last API call
-        private bool _pauseDetected; // Flag to limit forced syncs during pause
-        private bool _trackEnded; // Flag for track end state
-        private DateTime _trackEndTime; // Time when track ended
-        private bool _isResuming; // Flag for resume animation
-        private DateTime _resumeStartTime; // Time when resume started
-        private string? _lastTrackName; // Store last track name for resume
-        private string? _lastArtistName; // Store last artist name for resume
+        // Cache for playback state
+        private string? _lastTrackId;
+        private int _lastProgressMs;
+        private int _previousProgressMs;
+        private int _lastDurationMs;
+        private bool _isPlaying;
+        private DateTime _lastApiCallTime = DateTime.MinValue;
+        private bool _pauseDetected;
+        private int _pauseCount;
+        private bool _trackEnded;
+        private DateTime _trackEndTime;
+        private bool _isResuming;
+        private DateTime _resumeStartTime;
+        private string? _lastTrackName;
+        private string? _lastArtistName;
+        private string? _lastAlbumName;
+
+        // Cached display strings
+        private string? _displayTrackName;
+        private string? _displayArtistName;
+        private string? _displayAlbumName;
 
         // Configurable character cutoff
-        private int _maxDisplayLength = 20; // Default max characters, configurable via .ini
+        private int _maxDisplayLength = 20;
 
-        private const int SyncIntervalSeconds = 1; // Sync with API every X seconds
-        private const int ProgressToleranceMs = 1500; // Tolerance for pause detection (ms)
-
-        private static readonly object _fileLock = new object();
+        private const int SyncIntervalSeconds = 1;
+        private const int ProgressToleranceMs = 1500;
+        private const int PauseThreshold = 2;
 
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.40")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.46")
         {
         }
 
         public override string? ConfigFilePath => _configFilePath;
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
-        // Initializes the plugin, setting up authentication and configuration.
         public override void Initialize()
         {
             Debug.WriteLine("Initialize called");
@@ -148,7 +105,7 @@ namespace InfoPanel.Extras
             {
                 config = new IniData();
                 config["Spotify Plugin"]["APIKey"] = "<your-spotify-api-key>";
-                config["Spotify Plugin"]["MaxDisplayLength"] = "20"; // Default cutoff
+                config["Spotify Plugin"]["MaxDisplayLength"] = "20";
                 parser.WriteFile(_configFilePath, config);
                 Debug.WriteLine("Config file created with placeholder API key and MaxDisplayLength.");
             }
@@ -156,11 +113,16 @@ namespace InfoPanel.Extras
             {
                 try
                 {
-                    config = parser.ReadFile(_configFilePath);
+                    using (FileStream fileStream = new FileStream(_configFilePath!, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    using (StreamReader reader = new StreamReader(fileStream))
+                    {
+                        string fileContent = reader.ReadToEnd();
+                        config = parser.Parser.Parse(fileContent);
+                    }
+
                     _apiKey = config["Spotify Plugin"]["APIKey"];
                     _refreshToken = config["Spotify Plugin"]["RefreshToken"];
 
-                    // Load MaxDisplayLength, add if missing
                     if (!config["Spotify Plugin"].ContainsKey("MaxDisplayLength") ||
                         !int.TryParse(config["Spotify Plugin"]["MaxDisplayLength"], out int maxLength) ||
                         maxLength <= 0)
@@ -176,33 +138,33 @@ namespace InfoPanel.Extras
                     }
 
                     Debug.WriteLine($"API Key: {_apiKey}, Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, MaxDisplayLength: {_maxDisplayLength}");
-
-                    if (!string.IsNullOrEmpty(_apiKey))
-                    {
-                        if (string.IsNullOrEmpty(_refreshToken) || !TryRefreshTokenAsync().Result)
-                        {
-                            StartAuthentication();
-                        }
-                    }
-                    else
-                    {
-                        Debug.WriteLine("Spotify API Key is not set or is invalid.");
-                        return;
-                    }
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"Error reading config file: {ex.Message}");
                     StartAuthentication();
+                    return;
                 }
             }
 
+            if (!string.IsNullOrEmpty(_apiKey))
+            {
+                if (string.IsNullOrEmpty(_refreshToken) || !TryRefreshTokenAsync().Result)
+                {
+                    StartAuthentication();
+                }
+            }
+            else
+            {
+                Debug.WriteLine("Spotify API Key is not set or is invalid.");
+                return;
+            }
+
             var container = new PluginContainer("Spotify");
-            container.Entries.AddRange([_currentTrack, _artist, _elapsedTime, _remainingTime, _trackProgress, _coverUrl]);
+            container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _coverUrl]);
             Load([container]);
         }
 
-        // Attempts to refresh the Spotify access token using the stored refresh token.
         private async Task<bool> TryRefreshTokenAsync()
         {
             if (_refreshToken == null || _apiKey == null)
@@ -225,12 +187,12 @@ namespace InfoPanel.Extras
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error refreshing token: {ex.Message}");
+                HandleError("Error refreshing token");
                 _refreshToken = null;
                 return false;
             }
         }
 
-        // Starts the Spotify authentication process using PKCE.
         private void StartAuthentication()
         {
             try
@@ -266,11 +228,11 @@ namespace InfoPanel.Extras
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"Error starting authentication: {ex.Message}");
                 HandleError($"Error starting authentication: {ex.Message}");
             }
         }
 
-        // Handles the authorization code response from Spotify.
         private async Task OnAuthorizationCodeReceived(object sender, AuthorizationCodeResponse response)
         {
             if (_verifier == null || _apiKey == null)
@@ -308,17 +270,25 @@ namespace InfoPanel.Extras
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"Authentication failed: {ex.Message}");
                 HandleError($"Authentication failed: {ex.Message}");
             }
         }
 
-        // Saves the refresh token to the config file.
         private void SaveRefreshToken(string token)
         {
             try
             {
                 var parser = new FileIniDataParser();
-                var config = parser.ReadFile(_configFilePath);
+                IniData config;
+
+                using (FileStream fileStream = new FileStream(_configFilePath!, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (StreamReader reader = new StreamReader(fileStream))
+                {
+                    string fileContent = reader.ReadToEnd();
+                    config = parser.Parser.Parse(fileContent);
+                }
+
                 config["Spotify Plugin"]["RefreshToken"] = token;
                 parser.WriteFile(_configFilePath, config);
                 Debug.WriteLine("Refresh token saved successfully.");
@@ -326,6 +296,7 @@ namespace InfoPanel.Extras
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error saving refresh token: {ex.Message}");
+                HandleError($"Error saving refresh token: {ex.Message}");
             }
         }
 
@@ -337,7 +308,7 @@ namespace InfoPanel.Extras
         public override void Load(List<IPluginContainer> containers)
         {
             var container = new PluginContainer("Spotify");
-            container.Entries.AddRange([_currentTrack, _artist, _elapsedTime, _remainingTime, _trackProgress, _coverUrl]);
+            container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _coverUrl]);
             containers.Add(container);
         }
 
@@ -352,7 +323,6 @@ namespace InfoPanel.Extras
             await GetSpotifyInfo();
         }
 
-        // Updates track info, using caching to reduce API calls and estimate time between syncs.
         private async Task GetSpotifyInfo()
         {
             Debug.WriteLine("GetSpotifyInfo called");
@@ -368,7 +338,6 @@ namespace InfoPanel.Extras
             var timeSinceLastCall = (now - _lastApiCallTime).TotalSeconds;
             bool forceSync = false;
 
-            // Check for track end before estimating
             if (_lastTrackId != null && _isPlaying)
             {
                 int elapsedMs = _lastProgressMs + (int)(timeSinceLastCall * 1000);
@@ -381,7 +350,6 @@ namespace InfoPanel.Extras
                 }
             }
 
-            // If less than sync interval and no force sync, estimate time if playing
             if (timeSinceLastCall < SyncIntervalSeconds && !forceSync && _lastTrackId != null && _isPlaying && !_pauseDetected)
             {
                 int elapsedMs = _lastProgressMs + (int)(timeSinceLastCall * 1000);
@@ -396,12 +364,11 @@ namespace InfoPanel.Extras
 
                 _elapsedTime.Value = TimeSpan.FromMilliseconds(elapsedMs).ToString(@"mm\:ss");
                 _remainingTime.Value = TimeSpan.FromMilliseconds(_lastDurationMs - elapsedMs).ToString(@"mm\:ss");
-                _trackProgress.Value = _lastDurationMs > 0 ? (float)(elapsedMs / (double)_lastDurationMs * 100) : 0.0F; // Progress percentage as float
+                _trackProgress.Value = _lastDurationMs > 0 ? (float)(elapsedMs / (double)_lastDurationMs * 100) : 0.0F;
                 Debug.WriteLine($"Estimated - Elapsed: {_elapsedTime.Value}, Remaining: {_remainingTime.Value}, Progress: {_trackProgress.Value:F1}%");
                 return;
             }
 
-            // Sync with API if interval elapsed, forced, or no cached data
             if (!_rateLimiter.TryRequest())
             {
                 Debug.WriteLine("Rate limit exceeded, waiting...");
@@ -417,62 +384,85 @@ namespace InfoPanel.Extras
 
                 if (playback?.Item is FullTrack result)
                 {
-                    // Check for pause by comparing current progress with previous sync
-                    if (_isPlaying && _previousProgressMs >= 0 && Math.Abs(playback.ProgressMs - _previousProgressMs) <= ProgressToleranceMs && !_pauseDetected)
+                    if (!playback.IsPlaying && _isPlaying)
                     {
-                        Debug.WriteLine("Progress stalled (pause detected), forcing API sync and stopping estimation.");
+                        Debug.WriteLine("IsPlaying false, pause detected");
                         _isPlaying = false;
                         _pauseDetected = true;
+                        _pauseCount = 0;
                         _currentTrack.Value = "Paused";
                         _artist.Value = "Paused";
+                        _album.Value = "Paused";
+                    }
+                    else if (_isPlaying && _previousProgressMs >= 0 && Math.Abs(playback.ProgressMs - _previousProgressMs) <= ProgressToleranceMs)
+                    {
+                        _pauseCount++;
+                        if (_pauseCount >= PauseThreshold && !_pauseDetected)
+                        {
+                            Debug.WriteLine("Progress stalled (pause detected), forcing API sync and stopping estimation.");
+                            _isPlaying = false;
+                            _pauseDetected = true;
+                            _currentTrack.Value = "Paused";
+                            _artist.Value = "Paused";
+                            _album.Value = "Paused";
+                        }
+                    }
+                    else
+                    {
+                        _pauseCount = 0;
                     }
 
-                    // Check for resume transition
                     bool wasPaused = !_isPlaying && _pauseDetected;
                     _previousProgressMs = _lastProgressMs;
                     _lastTrackId = result.Id;
                     _lastProgressMs = playback.ProgressMs;
                     _lastDurationMs = result.DurationMs;
-                    _isPlaying = playback.IsPlaying ? playback.IsPlaying : _isPlaying; // Respect API unless paused locally
+                    _isPlaying = playback.IsPlaying ? playback.IsPlaying : _isPlaying;
 
-                    // Handle resume animation
                     if (wasPaused && _isPlaying && !_isResuming)
                     {
                         _isResuming = true;
                         _resumeStartTime = DateTime.UtcNow;
                         _currentTrack.Value = "Resuming...";
                         _artist.Value = "Resuming...";
+                        _album.Value = "Resuming...";
                     }
 
-                    // Update track and artist based on state
                     if (_isPlaying || _lastTrackId != result.Id)
                     {
                         _pauseDetected = false;
                         _trackEnded = false;
                         _lastTrackName = !string.IsNullOrEmpty(result.Name) ? result.Name : "Unknown Track";
                         _lastArtistName = string.Join(", ", result.Artists.Select(a => a.Name ?? "Unknown"));
+                        _lastAlbumName = !string.IsNullOrEmpty(result.Album.Name) ? result.Album.Name : "Unknown Album";
+
+                        _displayTrackName = CutString(_lastTrackName);
+                        _displayArtistName = CutString(_lastArtistName);
+                        _displayAlbumName = CutString(_lastAlbumName);
 
                         if (_isResuming && (DateTime.UtcNow - _resumeStartTime).TotalSeconds >= 1)
                         {
                             _isResuming = false;
-                            _currentTrack.Value = _lastTrackName.Length > _maxDisplayLength ? _lastTrackName.Substring(0, _maxDisplayLength - 3) + "..." : _lastTrackName;
-                            _artist.Value = _lastArtistName;
+                            _currentTrack.Value = _displayTrackName;
+                            _artist.Value = _displayArtistName;
+                            _album.Value = _displayAlbumName;
                         }
                         else if (!_isResuming)
                         {
-                            _currentTrack.Value = _lastTrackName.Length > _maxDisplayLength ? _lastTrackName.Substring(0, _maxDisplayLength - 3) + "..." : _lastTrackName;
-                            _artist.Value = _lastArtistName;
+                            _currentTrack.Value = _displayTrackName;
+                            _artist.Value = _displayArtistName;
+                            _album.Value = _displayAlbumName;
                         }
                     }
 
                     var coverArtUrl = result.Album.Images.FirstOrDefault()?.Url ?? string.Empty;
-                    Debug.WriteLine($"Raw cover art URL from Spotify: {coverArtUrl}"); // Debug raw URL
-                    _coverUrl.Value = coverArtUrl; // Set raw URL directly, updates on track change
+                    Debug.WriteLine($"Raw cover art URL from Spotify: {coverArtUrl}");
+                    _coverUrl.Value = coverArtUrl;
 
                     _elapsedTime.Value = TimeSpan.FromMilliseconds(_lastProgressMs).ToString(@"mm\:ss");
                     _remainingTime.Value = TimeSpan.FromMilliseconds(_lastDurationMs - _lastProgressMs).ToString(@"mm\:ss");
-                    _trackProgress.Value = _lastDurationMs > 0 ? (float)(_lastProgressMs / (double)_lastDurationMs * 100) : 0.0F; // Progress percentage as float
-                    Debug.WriteLine($"Synced - Track: {_currentTrack.Value}, Artist: {_artist.Value}, Cover URL: {_coverUrl.Value}");
+                    _trackProgress.Value = _lastDurationMs > 0 ? (float)(_lastProgressMs / (double)_lastDurationMs * 100) : 0.0F;
+                    Debug.WriteLine($"Synced - Track: {_currentTrack.Value}, Artist: {_artist.Value}, Album: {_album.Value}, Cover URL: {_coverUrl.Value}");
                     Debug.WriteLine($"Elapsed: {_elapsedTime.Value}, Remaining: {_remainingTime.Value}, Progress: {_trackProgress.Value:F1}%");
                 }
                 else
@@ -482,15 +472,16 @@ namespace InfoPanel.Extras
                     _isPlaying = false;
                     _pauseDetected = false;
                     _isResuming = false;
+                    _pauseCount = 0;
 
-                    // Handle track end display for 3 seconds
                     if (_trackEnded && (DateTime.UtcNow - _trackEndTime).TotalSeconds < 3)
                     {
                         _currentTrack.Value = "Track Ended";
                         _artist.Value = _lastArtistName ?? "Unknown";
+                        _album.Value = _lastAlbumName ?? "Unknown";
                         _elapsedTime.Value = TimeSpan.FromMilliseconds(_lastDurationMs).ToString(@"mm\:ss");
                         _remainingTime.Value = "00:00";
-                        _trackProgress.Value = 100.0F; // 100% at track end
+                        _trackProgress.Value = 100.0F;
                     }
                     else
                     {
@@ -498,9 +489,14 @@ namespace InfoPanel.Extras
                         _previousProgressMs = -1;
                         _lastTrackName = null;
                         _lastArtistName = null;
-                        _trackProgress.Value = 0.0F; // Reset progress when no track
+                        _lastAlbumName = null;
+                        _displayTrackName = null;
+                        _displayArtistName = null;
+                        _displayAlbumName = null;
+                        _trackProgress.Value = 0.0F;
                         SetDefaultValues("No track playing");
                     }
+                    return;
                 }
             }
             catch (Exception ex)
@@ -510,11 +506,16 @@ namespace InfoPanel.Extras
             }
         }
 
-        // Executes an API call with retry logic for rate limits or network errors.
+        private string CutString(string input)
+        {
+            return input.Length > _maxDisplayLength ? input.Substring(0, _maxDisplayLength - 3) + "..." : input;
+        }
+
         private async Task<T?> ExecuteWithRetry<T>(Func<Task<T>> operation, int maxAttempts = 3)
         {
             int attempts = 0;
             TimeSpan delay = TimeSpan.FromSeconds(1);
+            const int maxDelaySeconds = 10;
 
             while (attempts < maxAttempts)
             {
@@ -526,11 +527,11 @@ namespace InfoPanel.Extras
                 {
                     if (apiEx.Response.Headers.TryGetValue("Retry-After", out string? retryAfter) && int.TryParse(retryAfter, out int seconds))
                     {
-                        delay = TimeSpan.FromSeconds(seconds);
+                        delay = TimeSpan.FromSeconds(Math.Min(seconds, maxDelaySeconds));
                     }
                     else
                     {
-                        delay = TimeSpan.FromSeconds(5);
+                        delay = TimeSpan.FromSeconds(Math.Min(5, maxDelaySeconds));
                     }
 
                     attempts++;
@@ -538,33 +539,41 @@ namespace InfoPanel.Extras
 
                     Debug.WriteLine($"Rate limit hit, waiting {delay.TotalSeconds}s. Attempt {attempts}/{maxAttempts}");
                     await Task.Delay(delay);
-                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds * 2 + new Random().Next(1, 3));
+                    delay = TimeSpan.FromSeconds(Math.Min(maxDelaySeconds, (int)delay.TotalSeconds * 2 + new Random().Next(1, 3)));
+                }
+                catch (APIException apiEx)
+                {
+                    attempts++;
+                    Debug.WriteLine($"API Error: {apiEx.Message}. Attempt {attempts}/{maxAttempts}");
+                    if (attempts >= maxAttempts) throw;
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + new Random().Next(1, 2));
                 }
                 catch (HttpRequestException httpEx)
                 {
                     attempts++;
                     Debug.WriteLine($"HTTP Error: {httpEx.Message}. Attempt {attempts}/{maxAttempts}");
                     if (attempts >= maxAttempts) throw;
-                    await Task.Delay(delay);
-                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + new Random().Next(1, 4));
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + new Random().Next(1, 2));
                 }
             }
             return default;
         }
 
-        // Resets UI elements to default values on error or no data.
         private void SetDefaultValues(string message = "Unknown")
         {
             _currentTrack.Value = message;
             _artist.Value = message;
+            _album.Value = message;
             _elapsedTime.Value = "00:00";
             _remainingTime.Value = "00:00";
-            _trackProgress.Value = 0.0F; // Reset progress
-            _coverUrl.Value = string.Empty; // Reset cover URL
+            _trackProgress.Value = 0.0F;
+            _coverUrl.Value = string.Empty;
             Debug.WriteLine($"Set default values: {message}");
+            if (message == "Unknown") Debug.WriteLine("Set default values: Message set to default 'Unknown', potential unhandled error.");
         }
 
-        // Logs errors and sets default UI values.
         private void HandleError(string errorMessage)
         {
             SetDefaultValues(errorMessage);
@@ -572,29 +581,44 @@ namespace InfoPanel.Extras
         }
     }
 
-    // Manages API request rates to comply with Spotify's limits.
     public class RateLimiter
     {
-        private readonly int _maxRequests;
-        private readonly TimeSpan _timeWindow;
-        private readonly ConcurrentQueue<DateTime> _requestTimes;
+        private readonly int _maxRequestsPerMinute;
+        private readonly TimeSpan _minuteWindow;
+        private readonly int _maxRequestsPerSecond;
+        private readonly TimeSpan _secondWindow;
+        private readonly ConcurrentQueue<DateTime> _requestTimesMinute;
+        private readonly ConcurrentQueue<DateTime> _requestTimesSecond;
 
-        public RateLimiter(int maxRequests, TimeSpan timeWindow)
+        public RateLimiter(int maxRequestsPerMinute, TimeSpan minuteWindow, int maxRequestsPerSecond, TimeSpan secondWindow)
         {
-            _maxRequests = maxRequests;
-            _timeWindow = timeWindow;
-            _requestTimes = new ConcurrentQueue<DateTime>();
+            _maxRequestsPerMinute = maxRequestsPerMinute;
+            _minuteWindow = minuteWindow;
+            _maxRequestsPerSecond = maxRequestsPerSecond;
+            _secondWindow = secondWindow;
+            _requestTimesMinute = new ConcurrentQueue<DateTime>();
+            _requestTimesSecond = new ConcurrentQueue<DateTime>();
         }
 
         public bool TryRequest()
         {
             var now = DateTime.UtcNow;
-            _requestTimes.Enqueue(now);
-            while (_requestTimes.TryPeek(out DateTime oldest) && (now - oldest) > _timeWindow)
+
+            _requestTimesMinute.Enqueue(now);
+            while (_requestTimesMinute.TryPeek(out DateTime oldest) && (now - oldest) > _minuteWindow)
             {
-                _requestTimes.TryDequeue(out _);
+                _requestTimesMinute.TryDequeue(out _);
             }
-            return _requestTimes.Count <= _maxRequests;
+            if (_requestTimesMinute.Count > _maxRequestsPerMinute) return false;
+
+            _requestTimesSecond.Enqueue(now);
+            while (_requestTimesSecond.TryPeek(out DateTime oldest) && (now - oldest) > _secondWindow)
+            {
+                _requestTimesSecond.TryDequeue(out _);
+            }
+            if (_requestTimesSecond.Count > _maxRequestsPerSecond) return false;
+
+            return true;
         }
     }
 }
