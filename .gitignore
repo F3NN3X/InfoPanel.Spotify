@@ -1,4 +1,4 @@
-# Ignore all hidden folders
+# Ignore all hidden folders 
 ./**/.*
 
 # Ignore bin and obj folders, recursively
