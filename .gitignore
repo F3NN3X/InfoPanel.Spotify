@@ -1,6 +1,12 @@
-# Ignore all folders starting with a dot anywhere in the project
-**/.*/
+# Ignore all hidden folders
+./**/.*
 
-# Ignore bin and obj folders anywhere in the project
-**/**/bin/
-**/**/obj/
+# Ignore bin and obj folders, recursively
+**/bin/
+**/obj/
+
+# Ignore .vs folder (Visual Studio)
+.vs/
+
+# Ignore .idea folder (IntelliJ IDEA)
+.idea/
