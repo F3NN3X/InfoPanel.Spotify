@@ -19,112 +19,108 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.52
+ * Version: 1.0.60
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and PluginText for cover URL.
  * Changelog:
- *   - v1.0.52 (Feb 28, 2025): Fine-tuned background token refresh.
- *     - Changes: Increased TokenRefreshCheckIntervalSeconds to 900s (15min), added retry mechanism with 3 attempts in StartBackgroundTokenRefresh().
- *     - Purpose: Reduce check frequency and improve refresh reliability.
+ *   - v1.0.60 (Mar 1, 2025): Fixed long-term restart token refresh.
+ *     - Changes: Ensured TryInitializeClientWithAccessToken() fails on expiration, triggering refresh in Initialize().
+ *     - Purpose: Resolve "The access token expired" after app closure >1 hour by properly refreshing on restart.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
 
 namespace InfoPanel.Spotify
 {
-    // SpotifyPlugin class: Integrates Spotify playback info into InfoPanel
     public class SpotifyPlugin : BasePlugin
     {
         // UI display elements (PluginText) for InfoPanel
-        private readonly PluginText _currentTrack = new("current-track", "Current Track", "-"); // Track name display
-        private readonly PluginText _artist = new("artist", "Artist", "-"); // Artist name display
-        private readonly PluginText _album = new("album", "Album", "-"); // Album name display
-        private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00"); // Elapsed time display
-        private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00"); // Remaining time display
-        private readonly PluginText _coverUrl = new("cover-art", "Cover URL", ""); // Cover art URL display
+        private readonly PluginText _currentTrack = new("current-track", "Current Track", "-");
+        private readonly PluginText _artist = new("artist", "Artist", "-");
+        private readonly PluginText _album = new("album", "Album", "-");
+        private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00");
+        private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00");
+        private readonly PluginText _coverUrl = new("cover-art", "Cover URL", "");
 
         // UI display elements (PluginSensor) for InfoPanel
-        private readonly PluginSensor _trackProgress = new("track-progress", "Track Progress (%)", 0.0F); // Progress percentage (0-100%)
+        private readonly PluginSensor _trackProgress = new("track-progress", "Track Progress (%)", 0.0F);
 
         // Spotify API and authentication fields
-        private SpotifyClient? _spotifyClient; // Client for Spotify API calls
-        private string? _verifier; // PKCE verifier for authentication
-        private EmbedIOAuthServer? _server; // Local server for OAuth callback
-        private string? _clientID; // Spotify API client ID
-        private string? _configFilePath; // Path to .ini config file
-        private string? _tokenFilePath; // Path to token storage file
-        private string? _refreshToken; // Refresh token for API access
-        private string? _accessToken; // Access token for API calls
-        private DateTime _tokenExpiration; // Expiration time of the access token
+        private SpotifyClient? _spotifyClient;
+        private string? _verifier;
+        private EmbedIOAuthServer? _server;
+        private string? _clientID;
+        private string? _configFilePath;
+        private string? _tokenFilePath;
+        private string? _refreshToken;
+        private string? _accessToken;
+        private DateTime _tokenExpiration;
 
         // Background refresh task
-        private CancellationTokenSource _refreshCancellationTokenSource; // Token to cancel background refresh task
+        private CancellationTokenSource _refreshCancellationTokenSource;
 
         // Rate limiter to manage API request frequency
         private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1), 10, TimeSpan.FromSeconds(1));
 
         // Cache for playback state to reduce API calls
-        private string? _lastTrackId; // ID of the last synced track
-        private int _lastProgressMs; // Last known progress in milliseconds
-        private int _previousProgressMs; // Progress from the prior sync
-        private int _lastDurationMs; // Last known track duration in milliseconds
-        private bool _isPlaying; // Indicates if a track is currently playing
-        private DateTime _lastApiCallTime = DateTime.MinValue; // Timestamp of the last API call
-        private bool _pauseDetected; // Flag to indicate a detected pause
-        private int _pauseCount; // Counter for consecutive pause detections
-        private bool _trackEnded; // Flag for track end state
-        private DateTime _trackEndTime; // Time when the track ended
-        private bool _isResuming; // Flag for resume animation
-        private DateTime _resumeStartTime; // Time when resume started
-        private string? _lastTrackName; // Cached last track name
-        private string? _lastArtistName; // Cached last artist name
-        private string? _lastAlbumName; // Cached last album name
+        private string? _lastTrackId;
+        private int _lastProgressMs;
+        private int _previousProgressMs;
+        private int _lastDurationMs;
+        private bool _isPlaying;
+        private DateTime _lastApiCallTime = DateTime.MinValue;
+        private bool _pauseDetected;
+        private int _pauseCount;
+        private bool _trackEnded;
+        private DateTime _trackEndTime;
+        private bool _isResuming;
+        private DateTime _resumeStartTime;
+        private string? _lastTrackName;
+        private string? _lastArtistName;
+        private string? _lastAlbumName;
 
         // Cached display strings for optimized UI updates
-        private string? _displayTrackName; // Truncated track name for display
-        private string? _displayArtistName; // Truncated artist name for display
-        private string? _displayAlbumName; // Truncated album name for display
+        private string? _displayTrackName;
+        private string? _displayArtistName;
+        private string? _displayAlbumName;
 
         // Configurable settings
-        private int _maxDisplayLength = 20; // Max characters for truncation, set via .ini
+        private int _maxDisplayLength = 20;
 
         // Constants for timing and detection thresholds
-        private const int SyncIntervalSeconds = 1; // API sync interval
-        private const int ProgressToleranceMs = 1500; // Tolerance for pause detection (ms)
-        private const int PauseThreshold = 2; // Consecutive stalls needed to confirm pause
-        private const int TokenExpirationBufferSeconds = 60; // Buffer before token expiration to trigger refresh
-        private const int TokenRefreshCheckIntervalSeconds = 900; // Check token every 15 minutes
-        private const int TokenRefreshMaxRetries = 3; // Max retry attempts for background refresh
-        private const int TokenRefreshRetryDelaySeconds = 5; // Initial delay between retries
+        private const int SyncIntervalSeconds = 1;
+        private const int ProgressToleranceMs = 1500;
+        private const int PauseThreshold = 2;
+        private const int TokenExpirationBufferSeconds = 60;
+        private const int TokenRefreshCheckIntervalSeconds = 900;
+        private const int TokenRefreshMaxRetries = 3;
+        private const int TokenRefreshRetryDelaySeconds = 5;
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.52")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.60")
         {
             _refreshCancellationTokenSource = new CancellationTokenSource();
         }
 
-        // Property: Exposes config file path to InfoPanel
         public override string? ConfigFilePath => _configFilePath;
-
-        // Property: Defines update interval for InfoPanel
         public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
-        // Initializes the plugin: Sets up config, authentication, and UI container
+        // Initializes the plugin
         public override void Initialize()
         {
             Debug.WriteLine("Initialize called");
 
-            // Set paths for .ini and token files based on assembly location
             Assembly assembly = Assembly.GetExecutingAssembly();
             string basePath = assembly.ManifestModule.FullyQualifiedName;
             _configFilePath = $"{basePath}.ini";
             _tokenFilePath = Path.Combine(Path.GetDirectoryName(basePath) ?? ".", "spotifyrefresh.tmp");
+            Debug.WriteLine($"Config file path: {_configFilePath}");
+            Debug.WriteLine($"Token file path: {_tokenFilePath}");
 
             var parser = new FileIniDataParser();
             IniData config;
             if (!File.Exists(_configFilePath))
             {
-                // Create a new .ini file if it doesn’t exist
                 config = new IniData();
                 config["Spotify Plugin"]["ClientID"] = "<your-spotify-client-id>";
                 config["Spotify Plugin"]["MaxDisplayLength"] = "20";
@@ -135,7 +131,6 @@ namespace InfoPanel.Spotify
             {
                 try
                 {
-                    // Read .ini file without locking
                     using (FileStream fileStream = new FileStream(_configFilePath!, FileMode.Open, FileAccess.Read, FileShare.Read))
                     using (StreamReader reader = new StreamReader(fileStream))
                     {
@@ -143,7 +138,6 @@ namespace InfoPanel.Spotify
                         config = parser.Parser.Parse(fileContent);
                     }
 
-                    // Load ClientID and MaxDisplayLength from .ini
                     _clientID = config["Spotify Plugin"]["ClientID"];
                     if (!config["Spotify Plugin"].ContainsKey("MaxDisplayLength") ||
                         !int.TryParse(config["Spotify Plugin"]["MaxDisplayLength"], out int maxLength) ||
@@ -158,16 +152,16 @@ namespace InfoPanel.Spotify
                     {
                         _maxDisplayLength = maxLength;
                     }
+                    Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}");
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"Error reading config file: {ex.Message}");
                     StartAuthentication();
-                    return; // Exit early if config read fails
+                    return;
                 }
             }
 
-            // Load tokens from spotifyrefresh.tmp if it exists
             if (File.Exists(_tokenFilePath))
             {
                 try
@@ -176,16 +170,27 @@ namespace InfoPanel.Spotify
                     using (StreamReader reader = new StreamReader(fileStream))
                     {
                         string fileContent = reader.ReadToEnd();
+                        Debug.WriteLine($"Raw .tmp content: {fileContent}");
                         var tokenConfig = parser.Parser.Parse(fileContent);
                         _refreshToken = tokenConfig["Spotify Tokens"]["RefreshToken"];
                         _accessToken = tokenConfig["Spotify Tokens"]["AccessToken"];
-                        if (DateTime.TryParse(tokenConfig["Spotify Tokens"]["TokenExpiration"], out DateTime expiration))
+                        string expirationStr = tokenConfig["Spotify Tokens"]["TokenExpiration"];
+                        if (!DateTime.TryParse(expirationStr, out DateTime expiration))
                         {
-                            _tokenExpiration = expiration;
+                            Debug.WriteLine($"Invalid TokenExpiration format in .tmp: '{expirationStr}'; resetting to MinValue.");
+                            _tokenExpiration = DateTime.MinValue;
                         }
                         else
                         {
-                            _tokenExpiration = DateTime.MinValue; // Reset to invalid if parsing fails
+                            _tokenExpiration = expiration;
+                        }
+
+                        if (string.IsNullOrEmpty(_refreshToken) || string.IsNullOrEmpty(_accessToken))
+                        {
+                            Debug.WriteLine("Tokens in .tmp are null or empty; resetting.");
+                            _refreshToken = null;
+                            _accessToken = null;
+                            _tokenExpiration = DateTime.MinValue;
                         }
                     }
                     Debug.WriteLine($"Loaded tokens from spotifyrefresh.tmp - Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Access Token: {(string.IsNullOrEmpty(_accessToken) ? "null" : "set")}, Expiration: {_tokenExpiration}");
@@ -203,19 +208,21 @@ namespace InfoPanel.Spotify
                 Debug.WriteLine("No spotifyrefresh.tmp found; will create on first authentication.");
             }
 
-            // Authenticate or reuse token if valid
             if (!string.IsNullOrEmpty(_clientID))
             {
-                if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds) || !TryInitializeClientWithAccessToken())
+                Debug.WriteLine("Checking token usability...");
+                if (string.IsNullOrEmpty(_accessToken) || !TryInitializeClientWithAccessToken())
                 {
-                    if (string.IsNullOrEmpty(_refreshToken) || !TryRefreshTokenAsync().Result)
+                    Debug.WriteLine("Access token invalid or expired; attempting refresh...");
+                    if (string.IsNullOrEmpty(_refreshToken) || !TryRefreshTokenAsync().GetAwaiter().GetResult())
                     {
+                        Debug.WriteLine("Refresh failed or no refresh token; starting authentication.");
                         StartAuthentication();
                     }
                 }
                 else
                 {
-                    // Start background token refresh if token is valid
+                    Debug.WriteLine("Token valid; starting background refresh.");
                     StartBackgroundTokenRefresh();
                 }
             }
@@ -225,7 +232,6 @@ namespace InfoPanel.Spotify
                 return;
             }
 
-            // Register UI elements with InfoPanel
             var container = new PluginContainer("Spotify");
             container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _coverUrl]);
             Load([container]);
@@ -251,7 +257,7 @@ namespace InfoPanel.Spotify
                                 {
                                     if (await TryRefreshTokenAsync())
                                     {
-                                        break; // Success, exit retry loop
+                                        break;
                                     }
                                 }
                                 catch (Exception ex)
@@ -260,7 +266,7 @@ namespace InfoPanel.Spotify
                                     if (attempts >= TokenRefreshMaxRetries)
                                     {
                                         Debug.WriteLine($"Background token refresh failed after {TokenRefreshMaxRetries} attempts: {ex.Message}");
-                                        break; // Max retries reached
+                                        break;
                                     }
                                     Debug.WriteLine($"Retry {attempts}/{TokenRefreshMaxRetries} for background token refresh failed: {ex.Message}");
                                     await Task.Delay(TimeSpan.FromSeconds(TokenRefreshRetryDelaySeconds * attempts), _refreshCancellationTokenSource.Token);
@@ -273,7 +279,6 @@ namespace InfoPanel.Spotify
                         Debug.WriteLine($"Unexpected error in background token refresh task: {ex.Message}");
                     }
 
-                    // Wait before next check
                     await Task.Delay(TimeSpan.FromSeconds(TokenRefreshCheckIntervalSeconds), _refreshCancellationTokenSource.Token);
                 }
             }, _refreshCancellationTokenSource.Token);
@@ -283,16 +288,22 @@ namespace InfoPanel.Spotify
         // Attempts to initialize SpotifyClient with stored access token if valid
         private bool TryInitializeClientWithAccessToken()
         {
-            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_clientID) || DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_clientID))
             {
-                Debug.WriteLine("Access token missing, expired, or invalid; refresh required.");
+                Debug.WriteLine("Access token or ClientID is null; cannot initialize.");
+                return false;
+            }
+
+            if (DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
+            {
+                Debug.WriteLine($"Access token expired (Expiration: {_tokenExpiration}, Now: {DateTime.UtcNow}); refresh required.");
                 return false;
             }
 
             try
             {
-                var authenticator = new PKCEAuthenticator(_clientID, new PKCETokenResponse { AccessToken = _accessToken, ExpiresIn = (int)(_tokenExpiration - DateTime.UtcNow).TotalSeconds });
-                var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
+                Debug.WriteLine("Initializing client with Access Token...");
+                var config = SpotifyClientConfig.CreateDefault().WithToken(_accessToken, "Bearer");
                 _spotifyClient = new SpotifyClient(config);
                 Debug.WriteLine("Initialized Spotify client with stored access token.");
                 return true;
@@ -300,6 +311,7 @@ namespace InfoPanel.Spotify
             catch (Exception ex)
             {
                 Debug.WriteLine($"Failed to initialize client with stored token: {ex.Message}");
+                _spotifyClient = null;
                 return false;
             }
         }
@@ -315,6 +327,7 @@ namespace InfoPanel.Spotify
 
             try
             {
+                Debug.WriteLine("Attempting token refresh with Spotify API...");
                 var response = await new OAuthClient().RequestToken(
                     new PKCETokenRefreshRequest(_clientID, _refreshToken)
                 );
@@ -322,8 +335,8 @@ namespace InfoPanel.Spotify
                 var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
                 _spotifyClient = new SpotifyClient(config);
 
-                // Store new access token and expiration
                 _accessToken = response.AccessToken;
+                _refreshToken = response.RefreshToken ?? _refreshToken; // Update if provided
                 _tokenExpiration = DateTime.UtcNow.AddSeconds(response.ExpiresIn);
                 SaveTokens(_accessToken, _tokenExpiration);
 
@@ -348,10 +361,9 @@ namespace InfoPanel.Spotify
                 var parser = new FileIniDataParser();
                 IniData tokenConfig = new IniData();
 
-                // Populate token data
                 tokenConfig["Spotify Tokens"]["RefreshToken"] = _refreshToken ?? "";
                 tokenConfig["Spotify Tokens"]["AccessToken"] = accessToken;
-                tokenConfig["Spotify Tokens"]["TokenExpiration"] = expiration.ToString("o"); // ISO 8601 format
+                tokenConfig["Spotify Tokens"]["TokenExpiration"] = expiration.ToString("o");
 
                 parser.WriteFile(_tokenFilePath, tokenConfig);
                 Debug.WriteLine("Tokens saved to spotifyrefresh.tmp successfully.");
@@ -428,7 +440,6 @@ namespace InfoPanel.Spotify
                 var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
                 _spotifyClient = new SpotifyClient(config);
 
-                // Store access token and expiration
                 _accessToken = initialResponse.AccessToken;
                 _tokenExpiration = DateTime.UtcNow.AddSeconds(initialResponse.ExpiresIn);
                 SaveTokens(_accessToken, _tokenExpiration);
@@ -436,7 +447,6 @@ namespace InfoPanel.Spotify
                 await _server.Stop();
                 Debug.WriteLine("Authentication completed successfully.");
 
-                // Start background token refresh after successful auth
                 StartBackgroundTokenRefresh();
             }
             catch (APIException apiEx)
@@ -457,7 +467,7 @@ namespace InfoPanel.Spotify
         // Cleans up resources when the plugin is closed
         public override void Close()
         {
-            _refreshCancellationTokenSource.Cancel(); // Stop background refresh task
+            _refreshCancellationTokenSource.Cancel();
             _server?.Dispose();
             Debug.WriteLine("Plugin closed, background refresh task stopped.");
         }
@@ -487,6 +497,7 @@ namespace InfoPanel.Spotify
         private async Task GetSpotifyInfo()
         {
             Debug.WriteLine("GetSpotifyInfo called");
+            Debug.WriteLine($"SpotifyClient null? {_spotifyClient == null}");
 
             if (_spotifyClient == null)
             {
@@ -499,7 +510,6 @@ namespace InfoPanel.Spotify
             var timeSinceLastCall = (now - _lastApiCallTime).TotalSeconds;
             bool forceSync = false;
 
-            // Check if the track has ended based on cached progress
             if (_lastTrackId != null && _isPlaying)
             {
                 int elapsedMs = _lastProgressMs + (int)(timeSinceLastCall * 1000);
@@ -512,7 +522,6 @@ namespace InfoPanel.Spotify
                 }
             }
 
-            // Estimate progress if within sync interval and no state change
             if (timeSinceLastCall < SyncIntervalSeconds && !forceSync && _lastTrackId != null && _isPlaying && !_pauseDetected)
             {
                 int elapsedMs = _lastProgressMs + (int)(timeSinceLastCall * 1000);
@@ -532,7 +541,6 @@ namespace InfoPanel.Spotify
                 return;
             }
 
-            // Check rate limiter before making API call
             if (!_rateLimiter.TryRequest())
             {
                 Debug.WriteLine("Rate limit exceeded, waiting...");
@@ -543,13 +551,12 @@ namespace InfoPanel.Spotify
 
             try
             {
-                // Fetch current playback state from Spotify API
+                Debug.WriteLine("Fetching current playback from Spotify API...");
                 var playback = await ExecuteWithRetry(() => _spotifyClient.Player.GetCurrentPlayback());
                 _lastApiCallTime = DateTime.UtcNow;
 
                 if (playback?.Item is FullTrack result)
                 {
-                    // Immediate pause detection via API flag
                     if (!playback.IsPlaying && _isPlaying)
                     {
                         Debug.WriteLine("IsPlaying false, pause detected");
@@ -560,7 +567,6 @@ namespace InfoPanel.Spotify
                         _artist.Value = "Paused";
                         _album.Value = "Paused";
                     }
-                    // Pause detection via progress stall with counter
                     else if (_isPlaying && _previousProgressMs >= 0 && Math.Abs(playback.ProgressMs - _previousProgressMs) <= ProgressToleranceMs)
                     {
                         _pauseCount++;
@@ -579,7 +585,6 @@ namespace InfoPanel.Spotify
                         _pauseCount = 0;
                     }
 
-                    // Check for resume condition
                     bool wasPaused = !_isPlaying && _pauseDetected;
                     _previousProgressMs = _lastProgressMs;
                     _lastTrackId = result.Id;
@@ -587,7 +592,6 @@ namespace InfoPanel.Spotify
                     _lastDurationMs = result.DurationMs;
                     _isPlaying = playback.IsPlaying ? playback.IsPlaying : _isPlaying;
 
-                    // Handle resume animation
                     if (wasPaused && _isPlaying && !_isResuming)
                     {
                         _isResuming = true;
@@ -597,7 +601,6 @@ namespace InfoPanel.Spotify
                         _album.Value = "Resuming...";
                     }
 
-                    // Update UI if playing or track changed
                     if (_isPlaying || _lastTrackId != result.Id)
                     {
                         _pauseDetected = false;
@@ -637,7 +640,6 @@ namespace InfoPanel.Spotify
                 }
                 else
                 {
-                    // Handle no track playing or track end state
                     Debug.WriteLine("No track is currently playing.");
                     _lastTrackId = null;
                     _isPlaying = false;
@@ -667,7 +669,6 @@ namespace InfoPanel.Spotify
                         _trackProgress.Value = 0.0F;
                         SetDefaultValues("No track playing");
                     }
-                    return; // Exit early when no track is playing
                 }
             }
             catch (Exception ex)
@@ -688,7 +689,7 @@ namespace InfoPanel.Spotify
         {
             int attempts = 0;
             TimeSpan delay = TimeSpan.FromSeconds(1);
-            const int maxDelaySeconds = 10; // Max delay cap for rate limits
+            const int maxDelaySeconds = 10;
 
             while (attempts < maxAttempts)
             {
@@ -735,7 +736,6 @@ namespace InfoPanel.Spotify
         }
 
         // Resets UI elements to default values on error or no playback
-        // Note: Kept sync since PluginText.Value is sync; convert to async if InfoPanel adds async UI support
         private void SetDefaultValues(string message = "Unknown")
         {
             _currentTrack.Value = message;
@@ -750,7 +750,6 @@ namespace InfoPanel.Spotify
         }
 
         // Logs errors and updates UI with error message
-        // Note: Kept sync since PluginText.Value is sync; convert to async if InfoPanel adds async UI support
         private void HandleError(string errorMessage)
         {
             SetDefaultValues(errorMessage);
@@ -758,17 +757,15 @@ namespace InfoPanel.Spotify
         }
     }
 
-    // RateLimiter class: Ensures API requests stay within Spotify’s limits
     public class RateLimiter
     {
-        private readonly int _maxRequestsPerMinute; // Max requests per minute
-        private readonly TimeSpan _minuteWindow; // Window for minute limit
-        private readonly int _maxRequestsPerSecond; // Max requests per second
-        private readonly TimeSpan _secondWindow; // Window for second limit
-        private readonly ConcurrentQueue<DateTime> _requestTimesMinute; // Timestamps for minute window
-        private readonly ConcurrentQueue<DateTime> _requestTimesSecond; // Timestamps for second window
+        private readonly int _maxRequestsPerMinute;
+        private readonly TimeSpan _minuteWindow;
+        private readonly int _maxRequestsPerSecond;
+        private readonly TimeSpan _secondWindow;
+        private readonly ConcurrentQueue<DateTime> _requestTimesMinute;
+        private readonly ConcurrentQueue<DateTime> _requestTimesSecond;
 
-        // Constructor: Initializes rate limiter with limits and windows
         public RateLimiter(int maxRequestsPerMinute, TimeSpan minuteWindow, int maxRequestsPerSecond, TimeSpan secondWindow)
         {
             _maxRequestsPerMinute = maxRequestsPerMinute;
@@ -779,12 +776,10 @@ namespace InfoPanel.Spotify
             _requestTimesSecond = new ConcurrentQueue<DateTime>();
         }
 
-        // Checks if a request can be made within both minute and second limits
         public bool TryRequest()
         {
             var now = DateTime.UtcNow;
 
-            // Enforce per-minute limit
             _requestTimesMinute.Enqueue(now);
             while (_requestTimesMinute.TryPeek(out DateTime oldest) && (now - oldest) > _minuteWindow)
             {
@@ -792,7 +787,6 @@ namespace InfoPanel.Spotify
             }
             if (_requestTimesMinute.Count > _maxRequestsPerMinute) return false;
 
-            // Enforce per-second limit
             _requestTimesSecond.Enqueue(now);
             while (_requestTimesSecond.TryPeek(out DateTime oldest) && (now - oldest) > _secondWindow)
             {

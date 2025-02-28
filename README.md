@@ -48,7 +48,8 @@ Follow these steps to get the SpotifyPlugin working with InfoPanel:
 
 ### Troubleshooting Tips
 1. **"Error updating Spotify info"**:
-   - Fix: Delete `spotifyrefresh.tmp` and restart InfoPanel to force reauthorization.
+   - **Fixed in v1.0.60**: Short and long restarts (even after token expiration) should now work seamlessly by refreshing the token automatically.
+   - **Fallback**: If issues persist (e.g., network failure during refresh), close InfoPanel, delete `spotifyrefresh.tmp` from the plugins folder (via **Open Plugins Folder**), and restart to reauthorize.
 
 2. **No Browser Window for Authorization**:
    - Fix: Verify `ClientID` and redirect URI (`http://localhost:5000/callback`) in Spotify Dashboard.

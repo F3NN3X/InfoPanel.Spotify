@@ -2,6 +2,48 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+# Changelog
+
+## v1.0.60 (Mar 1, 2025)
+- **Fixed**: Long-term restart token refresh.
+  - **Changes**: Moved expiration check into `TryInitializeClientWithAccessToken()`, ensured refresh on failure in `Initialize()`.
+  - **Purpose**: Resolves "The access token expired" after app closure >1 hour by properly refreshing on restart.
+
+## v1.0.59 (Mar 1, 2025)
+- **Fixed**: Token expiration handling on restart.
+  - **Changes**: Adjusted `TryInitializeClientWithAccessToken()` to return `bool`, moved expiration logic inside, updated `Initialize()` to refresh on failure.
+  - **Purpose**: Attempt to fix "The access token expired" after long app closure (incomplete fix, refined in v1.0.60).
+
+## v1.0.58 (Mar 1, 2025)
+- **Fixed**: Simplified token management for restart.
+  - **Changes**: Removed `ExpiresIn`, used `WithToken()` for valid tokens, refreshed if expired, aligned with `SpotifyAPI.Web` best practices.
+  - **Purpose**: Resolved "Only valid bearer authentication supported" by simplifying PKCE token handling; short restarts worked, long restarts still failed.
+
+## v1.0.57 (Mar 1, 2025)
+- **Fixed**: PKCE token restoration on restart.
+  - **Changes**: Added `expires_in` to `.tmp`, aligned `TryInitializeClientWithAccessToken()` with Spotify PKCE flow by preserving exact token state.
+  - **Purpose**: Attempt to fix "Only valid bearer authentication supported" (still failed due to token state mismatch).
+
+## v1.0.56 (Mar 1, 2025)
+- **Fixed**: Token restoration on restart.
+  - **Changes**: Adjusted `TryInitializeClientWithAccessToken()` to use correct `ExpiresIn`, fixed null reference warning (CS8601).
+  - **Purpose**: Attempt to resolve "Only valid bearer authentication supported" (incomplete due to static `ExpiresIn`).
+
+## v1.0.55 (Mar 1, 2025)
+- **Fixed**: Token reuse on restart.
+  - **Changes**: Updated `TryInitializeClientWithAccessToken()` to include `refreshToken` in `PKCEAuthenticator` setup, ensuring valid token state.
+  - **Purpose**: Attempt to fix "String is empty or null (Parameter 'refreshToken')" (failed due to `PKCETokenResponse` issues).
+
+## v1.0.54 (Mar 1, 2025)
+- **Fixed**: Invalid bearer token on restart.
+  - **Changes**: Simplified `TryInitializeClientWithAccessToken()` to avoid recalculating `ExpiresIn`, ensuring valid token reuse from `.tmp`.
+  - **Purpose**: Attempt to resolve "Only valid bearer authentication supported" (still failed due to token state).
+
+## v1.0.53 (Mar 1, 2025)
+- **Fixed**: Token loading on restart with enhanced logging.
+  - **Changes**: Improved `.tmp` parsing with validation, added detailed logging to debug token issues.
+  - **Purpose**: Diagnose "Error updating Spotify info" on restart (identified bearer token issue).
+
 ## [1.0.52] - 2025-02-28
 - **Improved**: Fine-tuned background token refresh.
   - Changes: Increased `TokenRefreshCheckIntervalSeconds` to 900s (15min), added retry mechanism with 3 attempts in `StartBackgroundTokenRefresh()`.
