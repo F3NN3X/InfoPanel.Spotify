@@ -19,9 +19,9 @@ A plugin for InfoPanel to display real-time Spotify track information, including
 
 ## Installation
 
-1. **Build**: Compile `InfoPanel.Spotify.csproj` to generate `InfoPanel.Spotify.dll`.
-2. **Install**: Download latest release and import the archive on the InfoPanel plugins page using "Import Plugin Archive".
-3. **Configure**: On first run, the plugin creates `InfoPanel.Spotify.dll.ini`. You **must** replace `<your-spotify-api-key>` with your Spotify API client ID and configure the Redirect URI (see below).
+1. **From source**: Compile `InfoPanel.Spotify.csproj` to generate `InfoPanel.Spotify.dll`.
+2. **Install Release**: Download latest release and import the archive on the InfoPanel plugins page using "Import Plugin Archive".
+3. **Configure**: On first run, the plugin creates `InfoPanel.Spotify.dll.ini` in the plugin directory. You **must** replace `<your-spotify-api-key>` with your Spotify API client ID and configure the Redirect URI (see below). Close InfoPanel for next step.
 4. **Authenticate**: After configuring your API key and redirect URI, run InfoPanel. Follow the browser prompt to authorize the plugin with Spotify. This process will generate a refresh token that will be saved in your `.ini` file. If the refresh token has expired, the Spotify auth will reopen in you browser. Do not edit this token manually.
 
 
