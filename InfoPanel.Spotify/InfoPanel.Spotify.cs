@@ -17,15 +17,14 @@ using IniParser.Model;
 using SpotifyAPI.Web;
 using SpotifyAPI.Web.Auth;
 
-// Plugin metadata and changelog summary
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.46
+ * Version: 1.0.50
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and PluginText for cover URL.
  * Changelog:
- *   - v1.0.46 (Feb 27, 2025): Fixed .ini file locking on reload and CS8604 warning.
- *     - Changes: Replaced ReadFile with FileStream and StreamReader using FileShare.Read to avoid locking, removed unnecessary parser.Dispose(), added null suppression (!) to _configFilePath to silence CS8604.
- *     - Purpose: Prevent freezes when reactivating the plugin with an existing .ini file and ensure clean compile.
+ *   - v1.0.50 (Feb 28, 2025): Renamed APIKey to ClientID.
+ *     - Changes: Updated all references from APIKey to ClientID for consistency with Spotify terminology.
+ *     - Purpose: Improve clarity and alignment with Spotify API naming.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
@@ -50,9 +49,12 @@ namespace InfoPanel.Spotify
         private SpotifyClient? _spotifyClient; // Client for Spotify API calls
         private string? _verifier; // PKCE verifier for authentication
         private EmbedIOAuthServer? _server; // Local server for OAuth callback
-        private string? _apiKey; // Spotify API client ID
+        private string? _clientID; // Spotify API client ID (renamed from APIKey)
         private string? _configFilePath; // Path to .ini config file
+        private string? _tokenFilePath; // Path to token storage file
         private string? _refreshToken; // Refresh token for API access
+        private string? _accessToken; // Access token for API calls
+        private DateTime _tokenExpiration; // Expiration time of the access token
 
         // Rate limiter to manage API request frequency
         private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1), 10, TimeSpan.FromSeconds(1));
@@ -86,10 +88,11 @@ namespace InfoPanel.Spotify
         private const int SyncIntervalSeconds = 1; // API sync interval
         private const int ProgressToleranceMs = 1500; // Tolerance for pause detection (ms)
         private const int PauseThreshold = 2; // Consecutive stalls needed to confirm pause
+        private const int TokenExpirationBufferSeconds = 60; // Buffer before token expiration to trigger refresh
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.46")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.50")
         {
         }
 
@@ -104,9 +107,11 @@ namespace InfoPanel.Spotify
         {
             Debug.WriteLine("Initialize called");
 
-            // Set config file path based on assembly location
+            // Set paths for .ini and token files based on assembly location
             Assembly assembly = Assembly.GetExecutingAssembly();
-            _configFilePath = $"{assembly.ManifestModule.FullyQualifiedName}.ini";
+            string basePath = assembly.ManifestModule.FullyQualifiedName;
+            _configFilePath = $"{basePath}.ini";
+            _tokenFilePath = Path.Combine(Path.GetDirectoryName(basePath) ?? ".", "spotifyrefresh.tmp");
 
             var parser = new FileIniDataParser();
             IniData config;
@@ -114,16 +119,16 @@ namespace InfoPanel.Spotify
             {
                 // Create a new .ini file if it doesn’t exist
                 config = new IniData();
-                config["Spotify Plugin"]["APIKey"] = "<your-spotify-api-key>";
+                config["Spotify Plugin"]["ClientID"] = "<your-spotify-client-id>";
                 config["Spotify Plugin"]["MaxDisplayLength"] = "20";
                 parser.WriteFile(_configFilePath, config);
-                Debug.WriteLine("Config file created with placeholder API key and MaxDisplayLength.");
+                Debug.WriteLine("Config file created with placeholder ClientID and MaxDisplayLength.");
             }
             else
             {
                 try
                 {
-                    // Read existing .ini file without locking
+                    // Read .ini file without locking
                     using (FileStream fileStream = new FileStream(_configFilePath!, FileMode.Open, FileAccess.Read, FileShare.Read))
                     using (StreamReader reader = new StreamReader(fileStream))
                     {
@@ -131,11 +136,8 @@ namespace InfoPanel.Spotify
                         config = parser.Parser.Parse(fileContent);
                     }
 
-                    // Load API key and refresh token
-                    _apiKey = config["Spotify Plugin"]["APIKey"];
-                    _refreshToken = config["Spotify Plugin"]["RefreshToken"];
-
-                    // Load and validate MaxDisplayLength
+                    // Load ClientID and MaxDisplayLength from .ini
+                    _clientID = config["Spotify Plugin"]["ClientID"];
                     if (!config["Spotify Plugin"].ContainsKey("MaxDisplayLength") ||
                         !int.TryParse(config["Spotify Plugin"]["MaxDisplayLength"], out int maxLength) ||
                         maxLength <= 0)
@@ -149,8 +151,6 @@ namespace InfoPanel.Spotify
                     {
                         _maxDisplayLength = maxLength;
                     }
-
-                    Debug.WriteLine($"API Key: {_apiKey}, Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, MaxDisplayLength: {_maxDisplayLength}");
                 }
                 catch (Exception ex)
                 {
@@ -160,17 +160,56 @@ namespace InfoPanel.Spotify
                 }
             }
 
-            // Authenticate if API key is present
-            if (!string.IsNullOrEmpty(_apiKey))
+            // Load tokens from spotifyrefresh.tmp if it exists
+            if (File.Exists(_tokenFilePath))
             {
-                if (string.IsNullOrEmpty(_refreshToken) || !TryRefreshTokenAsync().Result)
+                try
                 {
-                    StartAuthentication();
+                    using (FileStream fileStream = new FileStream(_tokenFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    using (StreamReader reader = new StreamReader(fileStream))
+                    {
+                        string fileContent = reader.ReadToEnd();
+                        var tokenConfig = parser.Parser.Parse(fileContent);
+                        _refreshToken = tokenConfig["Spotify Tokens"]["RefreshToken"];
+                        _accessToken = tokenConfig["Spotify Tokens"]["AccessToken"];
+                        if (DateTime.TryParse(tokenConfig["Spotify Tokens"]["TokenExpiration"], out DateTime expiration))
+                        {
+                            _tokenExpiration = expiration;
+                        }
+                        else
+                        {
+                            _tokenExpiration = DateTime.MinValue; // Reset to invalid if parsing fails
+                        }
+                    }
+                    Debug.WriteLine($"Loaded tokens from spotifyrefresh.tmp - Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Access Token: {(string.IsNullOrEmpty(_accessToken) ? "null" : "set")}, Expiration: {_tokenExpiration}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error reading token file: {ex.Message}");
+                    _refreshToken = null;
+                    _accessToken = null;
+                    _tokenExpiration = DateTime.MinValue;
                 }
             }
             else
             {
-                Debug.WriteLine("Spotify API Key is not set or is invalid.");
+                Debug.WriteLine("No spotifyrefresh.tmp found; will create on first authentication.");
+            }
+
+            // Authenticate or reuse token if valid
+            if (!string.IsNullOrEmpty(_clientID))
+            {
+                if (string.IsNullOrEmpty(_accessToken) || DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds) || !TryInitializeClientWithAccessToken())
+                {
+                    if (string.IsNullOrEmpty(_refreshToken) || !TryRefreshTokenAsync().Result)
+                    {
+                        StartAuthentication();
+                    }
+                }
+            }
+            else
+            {
+                Debug.WriteLine("Spotify ClientID is not set or is invalid.");
                 return;
             }
 
@@ -180,23 +219,53 @@ namespace InfoPanel.Spotify
             Load([container]);
         }
 
+        // Attempts to initialize SpotifyClient with stored access token if valid
+        private bool TryInitializeClientWithAccessToken()
+        {
+            if (string.IsNullOrEmpty(_accessToken) || string.IsNullOrEmpty(_clientID) || DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
+            {
+                Debug.WriteLine("Access token missing, expired, or invalid; refresh required.");
+                return false;
+            }
+
+            try
+            {
+                var authenticator = new PKCEAuthenticator(_clientID, new PKCETokenResponse { AccessToken = _accessToken, ExpiresIn = (int)(_tokenExpiration - DateTime.UtcNow).TotalSeconds });
+                var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
+                _spotifyClient = new SpotifyClient(config);
+                Debug.WriteLine("Initialized Spotify client with stored access token.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to initialize client with stored token: {ex.Message}");
+                return false;
+            }
+        }
+
         // Attempts to refresh the Spotify access token using the stored refresh token
         private async Task<bool> TryRefreshTokenAsync()
         {
-            if (_refreshToken == null || _apiKey == null)
+            if (_refreshToken == null || _clientID == null)
             {
-                Debug.WriteLine("Refresh token or API key missing.");
+                Debug.WriteLine("Refresh token or ClientID missing.");
                 return false;
             }
 
             try
             {
                 var response = await new OAuthClient().RequestToken(
-                    new PKCETokenRefreshRequest(_apiKey, _refreshToken)
+                    new PKCETokenRefreshRequest(_clientID, _refreshToken)
                 );
-                var authenticator = new PKCEAuthenticator(_apiKey, response);
+                var authenticator = new PKCEAuthenticator(_clientID, response);
                 var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
                 _spotifyClient = new SpotifyClient(config);
+
+                // Store new access token and expiration
+                _accessToken = response.AccessToken;
+                _tokenExpiration = DateTime.UtcNow.AddSeconds(response.ExpiresIn);
+                SaveTokens(_accessToken, _tokenExpiration);
+
                 Debug.WriteLine("Successfully refreshed token.");
                 return true;
             }
@@ -205,7 +274,31 @@ namespace InfoPanel.Spotify
                 Debug.WriteLine($"Error refreshing token: {ex.Message}");
                 HandleError("Error refreshing token");
                 _refreshToken = null;
+                _accessToken = null;
                 return false;
+            }
+        }
+
+        // Saves access token and expiration to spotifyrefresh.tmp file
+        private void SaveTokens(string accessToken, DateTime expiration)
+        {
+            try
+            {
+                var parser = new FileIniDataParser();
+                IniData tokenConfig = new IniData();
+
+                // Populate token data
+                tokenConfig["Spotify Tokens"]["RefreshToken"] = _refreshToken ?? "";
+                tokenConfig["Spotify Tokens"]["AccessToken"] = accessToken;
+                tokenConfig["Spotify Tokens"]["TokenExpiration"] = expiration.ToString("o"); // ISO 8601 format
+
+                parser.WriteFile(_tokenFilePath, tokenConfig);
+                Debug.WriteLine("Tokens saved to spotifyrefresh.tmp successfully.");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error saving tokens to spotifyrefresh.tmp: {ex.Message}");
+                HandleError($"Error saving tokens: {ex.Message}");
             }
         }
 
@@ -221,15 +314,15 @@ namespace InfoPanel.Spotify
                 _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
                 _server.Start();
 
-                if (_apiKey == null)
+                if (_clientID == null)
                 {
-                    HandleError("API Key missing");
+                    HandleError("ClientID missing");
                     return;
                 }
 
                 var loginRequest = new LoginRequest(
                     _server.BaseUri,
-                    _apiKey,
+                    _clientID,
                     LoginRequest.ResponseType.Code
                 )
                 {
@@ -253,7 +346,7 @@ namespace InfoPanel.Spotify
         // Handles the OAuth callback, exchanging the code for tokens
         private async Task OnAuthorizationCodeReceived(object sender, AuthorizationCodeResponse response)
         {
-            if (_verifier == null || _apiKey == null)
+            if (_verifier == null || _clientID == null)
             {
                 HandleError("Authentication setup error");
                 return;
@@ -262,19 +355,23 @@ namespace InfoPanel.Spotify
             try
             {
                 var initialResponse = await new OAuthClient().RequestToken(
-                    new PKCETokenRequest(_apiKey, response.Code, _server!.BaseUri, _verifier)
+                    new PKCETokenRequest(_clientID, response.Code, _server!.BaseUri, _verifier)
                 );
                 Debug.WriteLine($"Received access token: {initialResponse.AccessToken}");
                 if (!string.IsNullOrEmpty(initialResponse.RefreshToken))
                 {
                     _refreshToken = initialResponse.RefreshToken;
-                    SaveRefreshToken(_refreshToken);
-                    Debug.WriteLine("Refresh token saved.");
                 }
 
-                var authenticator = new PKCEAuthenticator(_apiKey, initialResponse);
+                var authenticator = new PKCEAuthenticator(_clientID, initialResponse);
                 var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
                 _spotifyClient = new SpotifyClient(config);
+
+                // Store access token and expiration
+                _accessToken = initialResponse.AccessToken;
+                _tokenExpiration = DateTime.UtcNow.AddSeconds(initialResponse.ExpiresIn);
+                SaveTokens(_accessToken, _tokenExpiration);
+
                 await _server.Stop();
                 Debug.WriteLine("Authentication completed successfully.");
             }
@@ -290,33 +387,6 @@ namespace InfoPanel.Spotify
             {
                 Debug.WriteLine($"Authentication failed: {ex.Message}");
                 HandleError($"Authentication failed: {ex.Message}");
-            }
-        }
-
-        // Saves the refresh token to the .ini file
-        private void SaveRefreshToken(string token)
-        {
-            try
-            {
-                var parser = new FileIniDataParser();
-                IniData config;
-
-                // Read .ini file without locking
-                using (FileStream fileStream = new FileStream(_configFilePath!, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (StreamReader reader = new StreamReader(fileStream))
-                {
-                    string fileContent = reader.ReadToEnd();
-                    config = parser.Parser.Parse(fileContent);
-                }
-
-                config["Spotify Plugin"]["RefreshToken"] = token;
-                parser.WriteFile(_configFilePath, config);
-                Debug.WriteLine("Refresh token saved successfully.");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error saving refresh token: {ex.Message}");
-                HandleError($"Error saving refresh token: {ex.Message}");
             }
         }
 
