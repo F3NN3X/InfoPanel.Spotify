@@ -2,8 +2,38 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.0.52] - 2025-02-28
+- **Improved**: Fine-tuned background token refresh.
+  - Changes: Increased `TokenRefreshCheckIntervalSeconds` to 900s (15min), added retry mechanism with 3 attempts in `StartBackgroundTokenRefresh()`.
+  - Purpose: Reduce check frequency and improve refresh reliability.
+
+## [1.0.51] - 2025-02-28
+- **Added**: Background access token refresh.
+  - Changes: Implemented automatic refresh in a background task without user interaction.
+  - Purpose: Keep access token valid seamlessly.
+
+## [1.0.50] - 2025-02-28
+- **Renamed**: Changed `APIKey` to `ClientID`.
+  - Changes: Updated all references from `APIKey` to `ClientID` for consistency with Spotify terminology.
+  - Purpose: Improve clarity and alignment with Spotify API naming.
+
+## [1.0.49] - 2025-02-28
+- **Fixed**: Token reading from `spotifyrefresh.tmp`.
+  - Changes: Ensured tokens are always read from `.tmp`, improved token file creation and debugging.
+  - Purpose: Resolve "Error updating Spotify info" when `RefreshToken` is removed from `.ini`.
+
+## [1.0.48] - 2025-02-28
+- **Changed**: Moved token storage to separate file.
+  - Changes: Relocated `RefreshToken`, `AccessToken`, and `TokenExpiration` to `spotifyrefresh.tmp`, keeping `.ini` for `APIKey` and `MaxDisplayLength`.
+  - Purpose: Simplify user configuration and separate state from settings.
+
+## [1.0.47] - 2025-02-28
+- **Optimized**: Refresh token handling.
+  - Changes: Store access token and expiration in `.ini`, only refresh if expired or invalid.
+  - Purpose: Reduce unnecessary token refreshes on plugin reload.
+
 ## [1.0.46] - 2025-02-27
-- **Fixed**: .ini file locking on plugin reload causing freezes by replacing `ReadFile` with `FileStream` and `StreamReader` using `FileShare.Read`.
+- **Fixed**: `.ini` file locking on plugin reload causing freezes by replacing `ReadFile` with `FileStream` and `StreamReader` using `FileShare.Read`.
 - **Removed**: Unnecessary `parser.Dispose()` calls.
 - **Fixed**: `CS8604` warning by adding null suppression (`!`) to `_configFilePath` in `FileStream` calls.
 
@@ -27,7 +57,7 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 - **Added**: Album name display via `PluginText _album`.
 
 ## [1.0.40] - 2025-02-21
-- **Added**: Configurable `MaxDisplayLength` in .ini (default 20), truncates titles with "...".
+- **Added**: Configurable `MaxDisplayLength` in `.ini` (default 20), truncates titles with "...".
 
 ## [1.0.23] - 2025-02-20
 - **Changed**: `_coverUrl` ID to "cover-art" for image recognition, using raw Spotify URL.

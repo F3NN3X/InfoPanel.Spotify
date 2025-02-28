@@ -3,50 +3,58 @@
 A plugin for InfoPanel to display real-time Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time.
 
 ## Features
-
 - Displays current track details: title, artist, album, cover art URL, elapsed/remaining time, and progress percentage.
 - Configurable title truncation via `MaxDisplayLength` in `.ini` file (default: 20 characters).
 - Robust pause, resume, and track end detection with visual indicators.
-- Optimized API usage with caching and rate limiting (180 req/min, 10 req/s).
+- Optimized API usage with caching, rate limiting (180 req/min, 10 req/s), and automatic background token refresh.
 - PKCE authentication with Spotify Web API for secure token management.
 
 ## Requirements
-
 - .NET 8.0
 - InfoPanel application
-- Spotify API client ID and **redirect URI** (see instructions below on how to obtain these)
-- Dependencies: `SpotifyAPI.Web`, `IniParser`
+- Spotify API Client ID (set in `.ini` file)
+- Dependencies: `SpotifyAPI.Web`, `IniParser` (bundled in release)
 
-## Installation
+## Installation and Setup
+Follow these steps to get the SpotifyPlugin working with InfoPanel:
 
-1. **From source**: Compile `InfoPanel.Spotify.csproj` to generate `InfoPanel.Spotify.dll`.
-2. **Install Release**: Download latest release and import the archive on the InfoPanel plugins page using "Import Plugin Archive".
-3. **Configure**: On first run, the plugin creates `InfoPanel.Spotify.dll.ini` in the plugin directory. You **must** replace `<your-spotify-api-key>` with your Spotify API client ID and configure the Redirect URI (see below). Close InfoPanel for next step.
-4. **Authenticate**: After configuring your API key and redirect URI, run InfoPanel. Follow the browser prompt to authorize the plugin with Spotify. This process will generate a refresh token that will be saved in your `.ini` file. If the refresh token has expired, the Spotify auth will reopen in you browser. Do not edit this token manually.
+1. **Download the Plugin**:
+   - Download the latest release ZIP file (`SpotifyPlugin-vX.X.X.zip`) from the [GitHub Releases page](https://github.com/your-repo/releases).
 
+2. **Import the Plugin into InfoPanel**:
+   - Open the InfoPanel app.
+   - Navigate to the **Plugins** page.
+   - Click **Import Plugin Archive**, then select the downloaded ZIP file.
+   - InfoPanel will extract and install the plugin.
 
-## Obtaining Your Spotify API Key and Redirect URI
+3. **Configure the Plugin**:
+   - On the Plugins page, click **Open Plugins Folder** to locate the plugin files.
+   - Close InfoPanel.
+   - Open `InfoPanel.Spotify.dll.ini` in a text editor (e.g., Notepad).
+   - Replace `<your-spotify-client-id>` with your Spotify Client ID (see "Obtaining a Spotify Client ID" below).
+   - Save and close the file.
 
-This plugin uses the Spotify Web API's PKCE authentication flow. To use this plugin, you'll need to register an application on the Spotify Developer Dashboard:
+4. **Authorize with Spotify**:
+   - Restart InfoPanel.
+   - The plugin will open a browser window prompting you to log in to Spotify and authorize the app.
+   - After authorization, the plugin will save tokens to `spotifyrefresh.tmp` and start working.
 
-1. **Go to the Spotify Developer Dashboard:** Visit [https://developer.spotify.com/dashboard/](https://developer.spotify.com/dashboard/). You may need to create a Spotify account if you don't already have one.
-2. **Create a New App:** Click the "Create App" button.
-3. **Fill Out the Application Details:** Provide a name and description for your app. You can choose any name and description; they don't directly affect the plugin's functionality.
-4. **Redirect URI:**  **This is crucial.** Enter `http://localhost:5000/callback`  in the Redirect URIs field.  This is the callback URL used by the embedded authentication server.
-5. **Save and Get Your Client ID:** After creating the app, you'll find your "Client ID" in the app's dashboard. **Copy this Client ID**.
-6. **Configure Your Plugin:**  Paste the copied "Client ID" into your `InfoPanel.Spotify.dll.ini` file under `APIKey`.
+5. **Enjoy**:
+   - Play music in Spotify, and the plugin will display track details in InfoPanel automatically.
 
-## Usage
-
-- Activate the plugin in InfoPanel.
-- Play music in Spotify; track details will appear in the InfoPanel UI.
+## Obtaining a Spotify Client ID
+1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+2. Log in with your Spotify account.
+3. Click **Create an App**:
+   - Enter a name (e.g., "InfoPanel Spotify Plugin") and description.
+   - Set the **Redirect URI** to `http://localhost:5000/callback`.
+   - Accept the terms and click **Create**.
+4. Copy the **Client ID** from the app’s dashboard.
+5. Paste it into `InfoPanel.Spotify.dll.ini` as described in step 3 above.
 
 ## Configuration
-
-Edit `InfoPanel.Spotify.dll.ini`:
-
-```ini
-[Spotify Plugin]
-APIKey=<your-spotify-api-key>  // Obtained from the Spotify Developer Dashboard
-MaxDisplayLength=20             // Optional: Adjust the maximum number of characters displayed for track, artist, and album names.
-RefreshToken=<auto-generated>  // Do not modify this; it's automatically generated during authentication.
+- **`InfoPanel.Spotify.dll.ini`**:
+  ```ini
+  [Spotify Plugin]
+  ClientID=<your-spotify-client-id>
+  MaxDisplayLength=20

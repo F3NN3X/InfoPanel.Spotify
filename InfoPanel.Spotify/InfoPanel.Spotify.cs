@@ -19,12 +19,12 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.50
+ * Version: 1.0.52
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and PluginText for cover URL.
  * Changelog:
- *   - v1.0.50 (Feb 28, 2025): Renamed APIKey to ClientID.
- *     - Changes: Updated all references from APIKey to ClientID for consistency with Spotify terminology.
- *     - Purpose: Improve clarity and alignment with Spotify API naming.
+ *   - v1.0.52 (Feb 28, 2025): Fine-tuned background token refresh.
+ *     - Changes: Increased TokenRefreshCheckIntervalSeconds to 900s (15min), added retry mechanism with 3 attempts in StartBackgroundTokenRefresh().
+ *     - Purpose: Reduce check frequency and improve refresh reliability.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
@@ -49,12 +49,15 @@ namespace InfoPanel.Spotify
         private SpotifyClient? _spotifyClient; // Client for Spotify API calls
         private string? _verifier; // PKCE verifier for authentication
         private EmbedIOAuthServer? _server; // Local server for OAuth callback
-        private string? _clientID; // Spotify API client ID (renamed from APIKey)
+        private string? _clientID; // Spotify API client ID
         private string? _configFilePath; // Path to .ini config file
         private string? _tokenFilePath; // Path to token storage file
         private string? _refreshToken; // Refresh token for API access
         private string? _accessToken; // Access token for API calls
         private DateTime _tokenExpiration; // Expiration time of the access token
+
+        // Background refresh task
+        private CancellationTokenSource _refreshCancellationTokenSource; // Token to cancel background refresh task
 
         // Rate limiter to manage API request frequency
         private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1), 10, TimeSpan.FromSeconds(1));
@@ -89,11 +92,15 @@ namespace InfoPanel.Spotify
         private const int ProgressToleranceMs = 1500; // Tolerance for pause detection (ms)
         private const int PauseThreshold = 2; // Consecutive stalls needed to confirm pause
         private const int TokenExpirationBufferSeconds = 60; // Buffer before token expiration to trigger refresh
+        private const int TokenRefreshCheckIntervalSeconds = 900; // Check token every 15 minutes
+        private const int TokenRefreshMaxRetries = 3; // Max retry attempts for background refresh
+        private const int TokenRefreshRetryDelaySeconds = 5; // Initial delay between retries
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.50")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.52")
         {
+            _refreshCancellationTokenSource = new CancellationTokenSource();
         }
 
         // Property: Exposes config file path to InfoPanel
@@ -206,6 +213,11 @@ namespace InfoPanel.Spotify
                         StartAuthentication();
                     }
                 }
+                else
+                {
+                    // Start background token refresh if token is valid
+                    StartBackgroundTokenRefresh();
+                }
             }
             else
             {
@@ -217,6 +229,55 @@ namespace InfoPanel.Spotify
             var container = new PluginContainer("Spotify");
             container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _coverUrl]);
             Load([container]);
+        }
+
+        // Starts a background task to periodically refresh the access token with retries
+        private void StartBackgroundTokenRefresh()
+        {
+            Task.Run(async () =>
+            {
+                while (!_refreshCancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(_refreshToken) && !string.IsNullOrEmpty(_clientID) &&
+                            DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
+                        {
+                            Debug.WriteLine("Background token refresh triggered due to impending expiration.");
+                            int attempts = 0;
+                            while (attempts < TokenRefreshMaxRetries)
+                            {
+                                try
+                                {
+                                    if (await TryRefreshTokenAsync())
+                                    {
+                                        break; // Success, exit retry loop
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    attempts++;
+                                    if (attempts >= TokenRefreshMaxRetries)
+                                    {
+                                        Debug.WriteLine($"Background token refresh failed after {TokenRefreshMaxRetries} attempts: {ex.Message}");
+                                        break; // Max retries reached
+                                    }
+                                    Debug.WriteLine($"Retry {attempts}/{TokenRefreshMaxRetries} for background token refresh failed: {ex.Message}");
+                                    await Task.Delay(TimeSpan.FromSeconds(TokenRefreshRetryDelaySeconds * attempts), _refreshCancellationTokenSource.Token);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Unexpected error in background token refresh task: {ex.Message}");
+                    }
+
+                    // Wait before next check
+                    await Task.Delay(TimeSpan.FromSeconds(TokenRefreshCheckIntervalSeconds), _refreshCancellationTokenSource.Token);
+                }
+            }, _refreshCancellationTokenSource.Token);
+            Debug.WriteLine("Started background token refresh task.");
         }
 
         // Attempts to initialize SpotifyClient with stored access token if valid
@@ -374,6 +435,9 @@ namespace InfoPanel.Spotify
 
                 await _server.Stop();
                 Debug.WriteLine("Authentication completed successfully.");
+
+                // Start background token refresh after successful auth
+                StartBackgroundTokenRefresh();
             }
             catch (APIException apiEx)
             {
@@ -393,7 +457,9 @@ namespace InfoPanel.Spotify
         // Cleans up resources when the plugin is closed
         public override void Close()
         {
+            _refreshCancellationTokenSource.Cancel(); // Stop background refresh task
             _server?.Dispose();
+            Debug.WriteLine("Plugin closed, background refresh task stopped.");
         }
 
         // Loads UI elements into InfoPanel’s container system
