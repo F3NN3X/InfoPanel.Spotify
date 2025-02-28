@@ -19,7 +19,7 @@ A plugin for InfoPanel to display real-time Spotify track information, including
 Follow these steps to get the SpotifyPlugin working with InfoPanel:
 
 1. **Download the Plugin**:
-   - Download the latest release ZIP file (`SpotifyPlugin-vX.X.X.zip`) from the [GitHub Releases page](https://github.com/your-repo/releases).
+   - Download the latest release ZIP file (`SpotifyPlugin-vX.X.X.zip`) from the [GitHub Releases page](https://github.com/F3NN3X/InfoPanel.Spotify/releases).
 
 2. **Import the Plugin into InfoPanel**:
    - Open the InfoPanel app.
