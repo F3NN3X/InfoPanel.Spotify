@@ -9,12 +9,6 @@ A plugin for InfoPanel to display real-time Spotify track information, including
 - Optimized API usage with caching, rate limiting (180 req/min, 10 req/s), and automatic background token refresh.
 - PKCE authentication with Spotify Web API for secure token management.
 
-## Requirements
-- .NET 8.0
-- InfoPanel application
-- Spotify API Client ID (set in `.ini` file)
-- Dependencies: `SpotifyAPI.Web`, `IniParser` (bundled in release)
-
 ## Installation and Setup
 Follow these steps to get the SpotifyPlugin working with InfoPanel:
 
@@ -51,6 +45,23 @@ Follow these steps to get the SpotifyPlugin working with InfoPanel:
    - Accept the terms and click **Create**.
 4. Copy the **Client ID** from the app’s dashboard.
 5. Paste it into `InfoPanel.Spotify.dll.ini` as described in step 3 above.
+
+### Troubleshooting Tips
+1. **"Error updating Spotify info"**:
+   - Fix: Delete `spotifyrefresh.tmp` and restart InfoPanel to force reauthorization.
+
+2. **No Browser Window for Authorization**:
+   - Fix: Verify `ClientID` and redirect URI (`http://localhost:5000/callback`) in Spotify Dashboard.
+
+3. **No Track Info After Authorization**:
+   - Fix: Ensure Spotify is playing and check network.
+
+## Requirements for compile
+- .NET 8.0
+- InfoPanel application
+- Spotify API Client ID (set in `.ini` file)
+- Dependencies: `SpotifyAPI.Web`, `IniParser` (bundled in release)
+
 
 ## Configuration
 - **`InfoPanel.Spotify.dll.ini`**:
