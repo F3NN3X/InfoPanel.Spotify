@@ -4,6 +4,11 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
 # Changelog
 
+## v1.0.66 (Mar 1, 2025)
+- **Fixed**: Nullable warning in background refresh.
+  - **Changes**: Made `_refreshCancellationTokenSource` non-nullable (CS8602), adjusted `Close()` for safety.
+  - **Purpose**: Eliminate compile warning while preserving functionality.
+  
 ## v1.0.65 (Mar 1, 2025)
 - **Enhanced**: Authentication flow and UI clarity.
   - **Changes**: Renamed button to "Authorize with Spotify", added text mappings for auth state sensor in logs/README (0=Not Authenticated, 1=Authenticating, 2=Authenticated, 3=Error), restored background token refresh on startup for expired tokens while retaining button for initial/manual auth.

@@ -19,18 +19,18 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.65
- * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL and auth state labels.
+ * Version: 1.0.66
+ * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
- *   - v1.0.65 (Mar 1, 2025): Enhanced auth handling and UI feedback.
- *     - **Changes**: Renamed button to "Authorize with Spotify", added _authStateText for readable auth states, restored background token refresh on restart with button for initial/manual auth.
- *     - **Purpose**: Improve user experience with clearer button label and auth state display, auto-refresh expired tokens on restart while keeping manual auth option.
+ *   - v1.0.66 (Mar 1, 2025): Fixed nullable warning.
+ *     - **Changes**: Made _refreshCancellationTokenSource non-nullable (CS8602), adjusted Close() for safety.
+ *     - **Purpose**: Eliminate compile warning while maintaining functionality.
+ *   - v1.0.65 (Mar 1, 2025): Improved auth handling and UI.
+ *     - **Changes**: Renamed button to "Authorize with Spotify", added text mappings for auth state sensor (logs/readme), restored background token refresh for expired tokens on restart while keeping button for initial/manual auth.
+ *     - **Purpose**: Enhance usability with clearer button label, improve auth state visibility, and ensure seamless restarts with expired tokens.
  *   - v1.0.64 (Mar 1, 2025): Enhanced robustness and debugging.
  *     - **Changes**: Reduced exception noise in ExecuteWithRetry(), made Initialize() and Close() reentrant, added PluginSensor for auth state.
  *     - **Purpose**: Improve stability for reloads, reduce log clutter, and aid debugging with visible auth status.
- *   - v1.0.63 (Mar 1, 2025): Added "Start Spotify Auth" button.
- *     - **Changes**: Moved StartAuthentication() from auto-trigger in Initialize() to manual StartSpotifyAuth() with [PluginAction], kept background refresh and v1.0.62 refinements.
- *     - **Purpose**: Enable user-initiated Spotify authentication instead of automatic startup.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
@@ -46,11 +46,10 @@ namespace InfoPanel.Spotify
         private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00");
         private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00");
         private readonly PluginText _coverUrl = new("cover-art", "Cover URL", "");
-        private readonly PluginText _authStateText = new("auth-state-text", "Auth State", "Not Authenticated");
 
         // UI display elements (PluginSensor) for InfoPanel
         private readonly PluginSensor _trackProgress = new("track-progress", "Track Progress (%)", 0.0F);
-        private readonly PluginSensor _authState = new("auth-state", "Auth State (Num)", (float)AuthState.NotAuthenticated); // 0=NotAuth, 1=Authenticating, 2=Authenticated, 3=Error
+        private readonly PluginSensor _authState = new("auth-state", "Auth State", (float)AuthState.NotAuthenticated); // 0=NotAuth, 1=Authenticating, 2=Authenticated, 3=Error
 
         // Enum for auth state tracking
         private enum AuthState
@@ -72,8 +71,8 @@ namespace InfoPanel.Spotify
         private string? _accessToken;
         private DateTime _tokenExpiration;
 
-        // Background refresh task
-        private CancellationTokenSource? _refreshCancellationTokenSource;
+        // Background refresh task (non-nullable, always initialized)
+        private CancellationTokenSource _refreshCancellationTokenSource;
 
         // Rate limiter to manage API request frequency
         private readonly RateLimiter _rateLimiter = new RateLimiter(180, TimeSpan.FromMinutes(1), 10, TimeSpan.FromSeconds(1));
@@ -114,20 +113,20 @@ namespace InfoPanel.Spotify
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.65")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.66")
         {
             _refreshCancellationTokenSource = new CancellationTokenSource();
         }
 
         public override string? ConfigFilePath => _configFilePath;
 
-        // Initializes the plugin (auth setup with background refresh, reentrant)
+        // Initializes the plugin (reentrant, with background refresh for expired tokens)
         public override void Initialize()
         {
             Debug.WriteLine("Initialize called");
 
             // Ensure clean state for reentrancy
-            if (_refreshCancellationTokenSource != null && !_refreshCancellationTokenSource.IsCancellationRequested)
+            if (!_refreshCancellationTokenSource.IsCancellationRequested)
             {
                 _refreshCancellationTokenSource.Cancel();
             }
@@ -181,8 +180,7 @@ namespace InfoPanel.Spotify
                 {
                     Debug.WriteLine($"Error reading config file: {ex.Message}");
                     _authState.Value = (float)AuthState.Error;
-                    _authStateText.Value = "Error";
-                    return;
+                    return; // User must click button for initial auth
                 }
             }
 
@@ -226,7 +224,6 @@ namespace InfoPanel.Spotify
                     _accessToken = null;
                     _tokenExpiration = DateTime.MinValue;
                     _authState.Value = (float)AuthState.Error;
-                    _authStateText.Value = "Error";
                 }
             }
             else
@@ -241,30 +238,26 @@ namespace InfoPanel.Spotify
                 {
                     Debug.WriteLine("No access token; waiting for user to authorize via button.");
                     _authState.Value = (float)AuthState.NotAuthenticated;
-                    _authStateText.Value = "Not Authenticated";
                 }
                 else if (!TryInitializeClientWithAccessToken())
                 {
                     Debug.WriteLine("Access token invalid or expired; attempting background refresh...");
                     if (!string.IsNullOrEmpty(_refreshToken) && TryRefreshTokenAsync().GetAwaiter().GetResult())
                     {
-                        Debug.WriteLine("Background refresh succeeded; starting refresh task.");
+                        Debug.WriteLine("Background token refresh succeeded; starting refresh task.");
                         _authState.Value = (float)AuthState.Authenticated;
-                        _authStateText.Value = "Authenticated";
                         StartBackgroundTokenRefresh();
                     }
                     else
                     {
-                        Debug.WriteLine("Background refresh failed; waiting for user to authorize via button.");
+                        Debug.WriteLine("Background token refresh failed; waiting for user to authorize via button.");
                         _authState.Value = (float)AuthState.NotAuthenticated;
-                        _authStateText.Value = "Not Authenticated";
                     }
                 }
                 else
                 {
                     Debug.WriteLine("Token valid; starting background refresh.");
                     _authState.Value = (float)AuthState.Authenticated;
-                    _authStateText.Value = "Authenticated";
                     StartBackgroundTokenRefresh();
                 }
             }
@@ -272,7 +265,6 @@ namespace InfoPanel.Spotify
             {
                 Debug.WriteLine("Spotify ClientID is not set or is invalid.");
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
             }
         }
 
@@ -280,7 +272,7 @@ namespace InfoPanel.Spotify
         public override void Load(List<IPluginContainer> containers)
         {
             var container = new PluginContainer("Spotify");
-            container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _authState, _authStateText, _coverUrl]);
+            container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _authState, _coverUrl]);
             containers.Add(container);
         }
 
@@ -290,7 +282,6 @@ namespace InfoPanel.Spotify
         {
             Debug.WriteLine("Authorize with Spotify button clicked; initiating authentication...");
             _authState.Value = (float)AuthState.Authenticating;
-            _authStateText.Value = "Authenticating";
             StartAuthentication();
         }
 
@@ -299,7 +290,7 @@ namespace InfoPanel.Spotify
         {
             Task.Run(async () =>
             {
-                while (!_refreshCancellationTokenSource!.Token.IsCancellationRequested)
+                while (!_refreshCancellationTokenSource.Token.IsCancellationRequested)
                 {
                     try
                     {
@@ -355,7 +346,6 @@ namespace InfoPanel.Spotify
             {
                 Debug.WriteLine("Access token or ClientID is null; cannot initialize.");
                 _authState.Value = (float)AuthState.NotAuthenticated;
-                _authStateText.Value = "Not Authenticated";
                 return false;
             }
 
@@ -363,7 +353,6 @@ namespace InfoPanel.Spotify
             {
                 Debug.WriteLine($"Access token expired (Expiration: {_tokenExpiration}, Now: {DateTime.UtcNow}); refresh required.");
                 _authState.Value = (float)AuthState.NotAuthenticated;
-                _authStateText.Value = "Not Authenticated";
                 return false;
             }
 
@@ -374,7 +363,6 @@ namespace InfoPanel.Spotify
                 _spotifyClient = new SpotifyClient(config);
                 Debug.WriteLine("Initialized Spotify client with stored access token.");
                 _authState.Value = (float)AuthState.Authenticated;
-                _authStateText.Value = "Authenticated";
                 return true;
             }
             catch (Exception ex)
@@ -382,7 +370,6 @@ namespace InfoPanel.Spotify
                 Debug.WriteLine($"Failed to initialize client with stored token: {ex.Message}");
                 _spotifyClient = null;
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
                 return false;
             }
         }
@@ -394,7 +381,6 @@ namespace InfoPanel.Spotify
             {
                 Debug.WriteLine("Refresh token or ClientID missing.");
                 _authState.Value = (float)AuthState.NotAuthenticated;
-                _authStateText.Value = "Not Authenticated";
                 return false;
             }
 
@@ -415,7 +401,6 @@ namespace InfoPanel.Spotify
 
                 Debug.WriteLine("Successfully refreshed token.");
                 _authState.Value = (float)AuthState.Authenticated;
-                _authStateText.Value = "Authenticated";
                 return true;
             }
             catch (Exception ex)
@@ -425,7 +410,6 @@ namespace InfoPanel.Spotify
                 _refreshToken = null;
                 _accessToken = null;
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
                 return false;
             }
         }
@@ -450,7 +434,6 @@ namespace InfoPanel.Spotify
                 Debug.WriteLine($"Error saving tokens to spotifyrefresh.tmp: {ex.Message}");
                 HandleError($"Error saving tokens: {ex.Message}");
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
             }
         }
 
@@ -470,7 +453,6 @@ namespace InfoPanel.Spotify
                 {
                     HandleError("ClientID missing");
                     _authState.Value = (float)AuthState.Error;
-                    _authStateText.Value = "Error";
                     return;
                 }
 
@@ -490,14 +472,12 @@ namespace InfoPanel.Spotify
                 Process.Start(new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true });
                 Debug.WriteLine("Authentication process started.");
                 _authState.Value = (float)AuthState.Authenticating;
-                _authStateText.Value = "Authenticating";
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error starting authentication: {ex.Message}");
                 HandleError($"Error starting authentication: {ex.Message}");
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
             }
         }
 
@@ -508,7 +488,6 @@ namespace InfoPanel.Spotify
             {
                 HandleError("Authentication setup error");
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
                 return;
             }
 
@@ -535,7 +514,6 @@ namespace InfoPanel.Spotify
                 _server = null; // Ensure reentrant Close() safety
                 Debug.WriteLine("Authentication completed successfully.");
                 _authState.Value = (float)AuthState.Authenticated;
-                _authStateText.Value = "Authenticated";
 
                 StartBackgroundTokenRefresh();
             }
@@ -547,21 +525,19 @@ namespace InfoPanel.Spotify
                     Debug.WriteLine($"API Response Error: {apiEx.Message}");
                 }
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Authentication failed: {ex.Message}");
                 HandleError($"Authentication failed: {ex.Message}");
                 _authState.Value = (float)AuthState.Error;
-                _authStateText.Value = "Error";
             }
         }
 
         // Cleans up resources when the plugin is closed (reentrant)
         public override void Close()
         {
-            if (_refreshCancellationTokenSource != null && !_refreshCancellationTokenSource.IsCancellationRequested)
+            if (!_refreshCancellationTokenSource.IsCancellationRequested)
             {
                 _refreshCancellationTokenSource.Cancel();
             }
@@ -572,7 +548,6 @@ namespace InfoPanel.Spotify
             }
             _spotifyClient = null; // Reset for reentrancy
             _authState.Value = (float)AuthState.NotAuthenticated;
-            _authStateText.Value = "Not Authenticated";
             Debug.WriteLine("Plugin closed, background refresh task stopped.");
         }
 
