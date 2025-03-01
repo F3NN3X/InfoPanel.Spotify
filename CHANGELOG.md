@@ -4,6 +4,31 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
 # Changelog
 
+## v1.0.65 (Mar 1, 2025)
+- **Enhanced**: Authentication flow and UI clarity.
+  - **Changes**: Renamed button to "Authorize with Spotify", added text mappings for auth state sensor in logs/README (0=Not Authenticated, 1=Authenticating, 2=Authenticated, 3=Error), restored background token refresh on startup for expired tokens while retaining button for initial/manual auth.
+  - **Purpose**: Improve button UX, clarify auth state, and ensure seamless long-term restarts with expired tokens.
+
+## v1.0.64 (Mar 1, 2025)
+- **Enhanced**: Robustness and debugging improvements.
+  - **Changes**: Reduced exception noise in `ExecuteWithRetry()`, made `Initialize()` and `Close()` reentrant, added `PluginSensor` for auth state.
+  - **Purpose**: Improve stability for reloads, reduce log clutter, and aid debugging with visible auth status.
+
+## v1.0.63 (Mar 1, 2025)
+- **Added**: "Start Spotify Auth" button.
+  - **Changes**: Moved `StartAuthentication()` from auto-trigger in `Initialize()` to manual `StartSpotifyAuth()` with `[PluginAction]`, kept background refresh and v1.0.62 refinements.
+  - **Purpose**: Enable user-initiated Spotify authentication instead of automatic startup.
+
+## v1.0.62 (Mar 1, 2025)
+- **Refined**: Fixed compile errors from v1.0.61 refinements.
+  - **Changes**: Reverted `GetContainers()` to `Load()` for `BasePlugin` compliance (CS0115, CS0534), moved container setup back to `Load()`, kept `Update()` with sync-async comment, retained `_trackEndTime` with note.
+  - **Purpose**: Ensure `BasePlugin` interface adherence while preserving v1.0.61 enhancements.
+
+## v1.0.61 (Mar 1, 2025)
+- **Refined**: Code improvements post-v1.0.60.
+  - **Changes**: Added `_spotifyClient` null check in `StartBackgroundTokenRefresh`, removed redundant `Load()` (re-added as empty override), synced `SyncIntervalSeconds` with `UpdateInterval`, improved resuming logic with state flag and clearer text ("Resuming Playback..."), fixed compile errors (CS0534, CS0102, CS0229).
+  - **Purpose**: Enhance robustness, remove dead code, improve resuming display reliability, and ensure `BasePlugin` compliance.
+
 ## v1.0.60 (Mar 1, 2025)
 - **Fixed**: Long-term restart token refresh.
   - **Changes**: Moved expiration check into `TryInitializeClientWithAccessToken()`, ensured refresh on failure in `Initialize()`.

@@ -30,7 +30,7 @@ Follow these steps to get the SpotifyPlugin working with InfoPanel:
 
 4. **Authorize with Spotify**:
    - Restart InfoPanel.
-   - The plugin will open a browser window prompting you to log in to Spotify and authorize the app.
+   - Initiate or re-authenticate Spotify by clicking the "Authorize with Spotify" button in the InfoPanel UI (v1.0.63+). Required for first use or if automatic refresh fails.
    - After authorization, the plugin will save tokens to `spotifyrefresh.tmp` and start working.
 
 5. **Enjoy**:
@@ -47,15 +47,28 @@ Follow these steps to get the SpotifyPlugin working with InfoPanel:
 5. Paste it into `InfoPanel.Spotify.dll.ini` as described in step 3 above.
 
 ### Troubleshooting Tips
-1. **"Error updating Spotify info"**:
+- **"Error updating Spotify info"**:
    - **Fixed in v1.0.60**: Short and long restarts (even after token expiration) should now work seamlessly by refreshing the token automatically.
    - **Fallback**: If issues persist (e.g., network failure during refresh), close InfoPanel, delete `spotifyrefresh.tmp` from the plugins folder (via **Open Plugins Folder**), and restart to reauthorize.
 
-2. **No Browser Window for Authorization**:
+-  **No Browser Window for Authorization**:
    - Fix: Verify `ClientID` and redirect URI (`http://localhost:5000/callback`) in Spotify Dashboard.
 
-3. **No Track Info After Authorization**:
+- **No Track Info After Authorization**:
    - Fix: Ensure Spotify is playing and check network.
+
+- **"Spotify client not initialized"**:
+  - **Expected in v1.0.63+**: Appears until you click "Authorize with Spotify" for initial auth ("Auth State" = 0). After auth, restarts should auto-refresh if tokens are present.
+  - **Fallback**: If auth fails ("Auth State" = 3), delete `spotifyrefresh.tmp` from the plugins folder (via **Open Plugins Folder**) and retry with the button.
+
+- **"Error updating Spotify info"**:
+  - **Fixed in v1.0.65+**: Token expiration should refresh automatically on restart. If persists ("Auth State" = 3), use "Authorize with Spotify" or delete `.tmp` and retry.
+
+- **Auth State Sensor**: Monitor the "Auth State" sensor in the UI (v1.0.64+):
+  - 0: "Not Authenticated" (awaiting button click or invalid token).
+  - 1: "Authenticating" (button clicked, awaiting callback).
+  - 2: "Authenticated" (connected and syncing).
+  - 3: "Error" (auth failed; check logs).
 
 ## Requirements for compile
 - .NET 8.0
