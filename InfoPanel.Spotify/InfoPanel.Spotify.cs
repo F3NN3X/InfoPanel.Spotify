@@ -19,18 +19,18 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.69
+ * Version: 1.0.70
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
- *   - v1.0.69 (Mar 1, 2025): Fixed background refresh startup.
- *     - **Changes**: Replaced blocking refresh in Initialize() with async Task.Run(), enhanced logging to confirm task execution, ensured state sync on failures.
- *     - **Purpose**: Guarantee background refresh starts and runs, avoiding deadlocks and silent failures.
+ *   - v1.0.70 (Mar 1, 2025): Optimized background refresh interval.
+ *     - **Changes**: Increased `TokenRefreshCheckIntervalSeconds` from 30s to 1740s (~29 minutes) for ~2 checks/hour.
+ *     - **Purpose**: Reduce excessive polling while ensuring refresh before 1-hour token expiry with 60s buffer.
+ *   - v1.0.69 (Mar 1, 2025): Fixed background refresh startup reliability.
+ *     - **Changes**: Replaced blocking `.GetAwaiter().GetResult()` in `Initialize()` with async `Task.Run()` for refresh, enhanced logging to track task execution, ensured `_authState` syncs on all failures.
+ *     - **Purpose**: Prevent deadlocks, confirm background task runs, and align auth state with refresh success/failure.
  *   - v1.0.68 (Mar 1, 2025): Robustified background token refresh.
- *     - **Changes**: Reduced TokenRefreshCheckIntervalSeconds to 30s, forced initial refresh in Initialize(), improved state sync and logging, avoided blocking in refresh startup.
+ *     - **Changes**: Reduced `TokenRefreshCheckIntervalSeconds` to 30s, forced initial refresh in `Initialize()`, enhanced state sync and logging, avoided blocking in refresh startup.
  *     - **Purpose**: Ensure token refreshes catch expiry early, run reliably, and log clearly for debugging.
- *   - v1.0.67 (Mar 1, 2025): Fixed background token refresh timing.
- *     - **Changes**: Reduced TokenRefreshCheckIntervalSeconds to 60s, synced _authState on refresh failure, improved refresh logging.
- *     - **Purpose**: Ensure timely token refresh within 1-hour expiry, reflect auth state accurately, and debug refresh issues.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
@@ -113,7 +113,7 @@ namespace InfoPanel.Spotify
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.69")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.70")
         {
             _refreshCancellationTokenSource = new CancellationTokenSource();
         }
