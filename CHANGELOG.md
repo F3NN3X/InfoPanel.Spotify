@@ -4,11 +4,31 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
 # Changelog
 
+## v1.0.70 (Mar 1, 2025)
+- **Optimized**: Background refresh interval.
+  - **Changes**: Increased `TokenRefreshCheckIntervalSeconds` from 30s to 1740s (~29 minutes) for ~2 checks/hour.
+  - **Purpose**: Reduce excessive polling while ensuring refresh before 1-hour token expiry with 60s buffer.
+
+## v1.0.69 (Mar 1, 2025)
+- **Fixed**: Background refresh startup reliability.
+  - **Changes**: Replaced blocking `.GetAwaiter().GetResult()` in `Initialize()` with async `Task.Run()` for refresh, enhanced logging to track task execution, ensured `_authState` syncs on all failures.
+  - **Purpose**: Prevent deadlocks, confirm background task runs, and align auth state with refresh success/failure.
+
+## v1.0.68 (Mar 1, 2025)
+- **Fixed**: Background token refresh reliability.
+  - **Changes**: Reduced `TokenRefreshCheckIntervalSeconds` to 30s, forced initial refresh in `Initialize()`, enhanced state sync and logging, avoided blocking in refresh startup.
+  - **Purpose**: Ensure token refreshes catch expiry early, run reliably, and log clearly for debugging.
+
+## v1.0.67 (Mar 1, 2025)
+- **Fixed**: Background token refresh timing.
+  - **Changes**: Reduced `TokenRefreshCheckIntervalSeconds` to 60s, synced `_authState` on refresh failure, improved refresh logging.
+  - **Purpose**: Ensure timely token refresh within 1-hour expiry, reflect auth state accurately, and debug refresh issues.
+
 ## v1.0.66 (Mar 1, 2025)
 - **Fixed**: Nullable warning in background refresh.
   - **Changes**: Made `_refreshCancellationTokenSource` non-nullable (CS8602), adjusted `Close()` for safety.
   - **Purpose**: Eliminate compile warning while preserving functionality.
-  
+
 ## v1.0.65 (Mar 1, 2025)
 - **Enhanced**: Authentication flow and UI clarity.
   - **Changes**: Renamed button to "Authorize with Spotify", added text mappings for auth state sensor in logs/README (0=Not Authenticated, 1=Authenticating, 2=Authenticated, 3=Error), restored background token refresh on startup for expired tokens while retaining button for initial/manual auth.

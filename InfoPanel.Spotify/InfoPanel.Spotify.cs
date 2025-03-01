@@ -19,18 +19,18 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.66
+ * Version: 1.0.69
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
- *   - v1.0.66 (Mar 1, 2025): Fixed nullable warning.
- *     - **Changes**: Made _refreshCancellationTokenSource non-nullable (CS8602), adjusted Close() for safety.
- *     - **Purpose**: Eliminate compile warning while maintaining functionality.
- *   - v1.0.65 (Mar 1, 2025): Improved auth handling and UI.
- *     - **Changes**: Renamed button to "Authorize with Spotify", added text mappings for auth state sensor (logs/readme), restored background token refresh for expired tokens on restart while keeping button for initial/manual auth.
- *     - **Purpose**: Enhance usability with clearer button label, improve auth state visibility, and ensure seamless restarts with expired tokens.
- *   - v1.0.64 (Mar 1, 2025): Enhanced robustness and debugging.
- *     - **Changes**: Reduced exception noise in ExecuteWithRetry(), made Initialize() and Close() reentrant, added PluginSensor for auth state.
- *     - **Purpose**: Improve stability for reloads, reduce log clutter, and aid debugging with visible auth status.
+ *   - v1.0.69 (Mar 1, 2025): Fixed background refresh startup.
+ *     - **Changes**: Replaced blocking refresh in Initialize() with async Task.Run(), enhanced logging to confirm task execution, ensured state sync on failures.
+ *     - **Purpose**: Guarantee background refresh starts and runs, avoiding deadlocks and silent failures.
+ *   - v1.0.68 (Mar 1, 2025): Robustified background token refresh.
+ *     - **Changes**: Reduced TokenRefreshCheckIntervalSeconds to 30s, forced initial refresh in Initialize(), improved state sync and logging, avoided blocking in refresh startup.
+ *     - **Purpose**: Ensure token refreshes catch expiry early, run reliably, and log clearly for debugging.
+ *   - v1.0.67 (Mar 1, 2025): Fixed background token refresh timing.
+ *     - **Changes**: Reduced TokenRefreshCheckIntervalSeconds to 60s, synced _authState on refresh failure, improved refresh logging.
+ *     - **Purpose**: Ensure timely token refresh within 1-hour expiry, reflect auth state accurately, and debug refresh issues.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
@@ -107,20 +107,20 @@ namespace InfoPanel.Spotify
         private const int ProgressToleranceMs = 1500;
         private const int PauseThreshold = 2;
         private const int TokenExpirationBufferSeconds = 60;
-        private const int TokenRefreshCheckIntervalSeconds = 900;
+        private const int TokenRefreshCheckIntervalSeconds = 1740; // ~29 minutes for ~2 checks/hour, hits 58m
         private const int TokenRefreshMaxRetries = 3;
         private const int TokenRefreshRetryDelaySeconds = 5;
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.66")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.69")
         {
             _refreshCancellationTokenSource = new CancellationTokenSource();
         }
 
         public override string? ConfigFilePath => _configFilePath;
 
-        // Initializes the plugin (reentrant, with background refresh for expired tokens)
+        // Initializes the plugin (reentrant, with immediate async refresh for expired tokens)
         public override void Initialize()
         {
             Debug.WriteLine("Initialize called");
@@ -241,16 +241,36 @@ namespace InfoPanel.Spotify
                 }
                 else if (!TryInitializeClientWithAccessToken())
                 {
-                    Debug.WriteLine("Access token invalid or expired; attempting background refresh...");
-                    if (!string.IsNullOrEmpty(_refreshToken) && TryRefreshTokenAsync().GetAwaiter().GetResult())
+                    Debug.WriteLine("Access token invalid or expired; launching immediate async refresh...");
+                    if (!string.IsNullOrEmpty(_refreshToken))
                     {
-                        Debug.WriteLine("Background token refresh succeeded; starting refresh task.");
-                        _authState.Value = (float)AuthState.Authenticated;
-                        StartBackgroundTokenRefresh();
+                        // Launch refresh async to avoid blocking Initialize()
+                        Task.Run(async () =>
+                        {
+                            try
+                            {
+                                if (await TryRefreshTokenAsync())
+                                {
+                                    Debug.WriteLine("Async token refresh succeeded in Initialize; starting background task.");
+                                    _authState.Value = (float)AuthState.Authenticated;
+                                    StartBackgroundTokenRefresh();
+                                }
+                                else
+                                {
+                                    Debug.WriteLine("Async token refresh failed in Initialize; waiting for user to authorize via button.");
+                                    _authState.Value = (float)AuthState.NotAuthenticated;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"Async refresh in Initialize failed: {ex.Message}");
+                                _authState.Value = (float)AuthState.Error;
+                            }
+                        });
                     }
                     else
                     {
-                        Debug.WriteLine("Background token refresh failed; waiting for user to authorize via button.");
+                        Debug.WriteLine("No refresh token available; waiting for user to authorize via button.");
                         _authState.Value = (float)AuthState.NotAuthenticated;
                     }
                 }
@@ -290,20 +310,22 @@ namespace InfoPanel.Spotify
         {
             Task.Run(async () =>
             {
+                Debug.WriteLine($"Background refresh task started at {DateTime.UtcNow}");
                 while (!_refreshCancellationTokenSource.Token.IsCancellationRequested)
                 {
                     try
                     {
+                        Debug.WriteLine($"Background refresh loop iteration at {DateTime.UtcNow}");
                         if (_spotifyClient == null)
                         {
-                            Debug.WriteLine("Spotify client is null; skipping background refresh attempt.");
+                            Debug.WriteLine($"Spotify client is null at {DateTime.UtcNow}; skipping refresh attempt.");
                             continue;
                         }
 
                         if (!string.IsNullOrEmpty(_refreshToken) && !string.IsNullOrEmpty(_clientID) &&
                             DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
                         {
-                            Debug.WriteLine("Background token refresh triggered due to impending expiration.");
+                            Debug.WriteLine($"Background token refresh triggered at {DateTime.UtcNow}; token expires at {_tokenExpiration}");
                             int attempts = 0;
                             while (attempts < TokenRefreshMaxRetries)
                             {
@@ -311,6 +333,7 @@ namespace InfoPanel.Spotify
                                 {
                                     if (await TryRefreshTokenAsync())
                                     {
+                                        Debug.WriteLine($"Background refresh succeeded at {DateTime.UtcNow}; new expiry: {_tokenExpiration}");
                                         break;
                                     }
                                 }
@@ -319,24 +342,30 @@ namespace InfoPanel.Spotify
                                     attempts++;
                                     if (attempts >= TokenRefreshMaxRetries)
                                     {
-                                        Debug.WriteLine($"Background token refresh failed after {TokenRefreshMaxRetries} attempts: {ex.Message}");
+                                        Debug.WriteLine($"Background token refresh failed after {TokenRefreshMaxRetries} attempts at {DateTime.UtcNow}: {ex.Message}");
+                                        _authState.Value = (float)AuthState.Error;
                                         break;
                                     }
-                                    Debug.WriteLine($"Retry {attempts}/{TokenRefreshMaxRetries} for background token refresh failed: {ex.Message}");
+                                    Debug.WriteLine($"Retry {attempts}/{TokenRefreshMaxRetries} for background token refresh failed at {DateTime.UtcNow}: {ex.Message}");
                                     await Task.Delay(TimeSpan.FromSeconds(TokenRefreshRetryDelaySeconds * attempts), _refreshCancellationTokenSource.Token);
                                 }
                             }
                         }
+                        else
+                        {
+                            Debug.WriteLine($"Background refresh check at {DateTime.UtcNow}; token still valid until {_tokenExpiration}");
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Unexpected error in background token refresh task: {ex.Message}");
+                        Debug.WriteLine($"Unexpected error in background token refresh task at {DateTime.UtcNow}: {ex.Message}");
                     }
 
                     await Task.Delay(TimeSpan.FromSeconds(TokenRefreshCheckIntervalSeconds), _refreshCancellationTokenSource.Token);
                 }
+                Debug.WriteLine($"Background refresh task stopped at {DateTime.UtcNow}");
             }, _refreshCancellationTokenSource.Token);
-            Debug.WriteLine("Started background token refresh task.");
+            Debug.WriteLine($"Background refresh task launched at {DateTime.UtcNow}");
         }
 
         // Attempts to initialize SpotifyClient with stored access token if valid
