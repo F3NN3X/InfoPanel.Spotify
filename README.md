@@ -108,7 +108,6 @@ If the plugin isn’t working as expected, check the InfoPanel UI for these erro
 - **How to Fix**:
   - Check if the plugin folder (e.g., `C:\Users\YourName\AppData\Local\InfoPanel\plugins\InfoPanel.Spotify\`) is writable—right-click, **Properties**, **Security** tab.
   - Delete `spotifyrefresh.tmp` if it exists, then reauthorize via **"Authorize with Spotify"**.
-- **If It Persists**: Run InfoPanel as Administrator to rule out permission issues.
 
 ### **Error Message: "Spotify ClientID is not set or is invalid"**
 
@@ -123,7 +122,6 @@ If the plugin isn’t working as expected, check the InfoPanel UI for these erro
 
 - **Restart InfoPanel**: Fixes most temporary glitches—close and reopen the app.
 - **Check Spotify**: Ensure it’s playing and your account is logged in—plugin mirrors what’s active.
-- **Logs**: If you’re tech-savvy, check `Debug.WriteLine` output in a debugger for deeper clues (e.g., `"Token expired during playback fetch"`).
 
 ### **Still Stuck?**
 
