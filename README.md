@@ -46,29 +46,92 @@ Follow these steps to get the SpotifyPlugin working with InfoPanel:
 4. Copy the **Client ID** from the app’s dashboard.
 5. Paste it into `InfoPanel.Spotify.dll.ini` as described in step 3 above.
 
-### Troubleshooting Tips
-- **"Error updating Spotify info"**:
-   - **Fixed in v1.0.60**: Short and long restarts (even after token expiration) should now work seamlessly by refreshing the token automatically.
-   - **Fallback**: If issues persist (e.g., network failure during refresh), close InfoPanel, delete `spotifyrefresh.tmp` from the plugins folder (via **Open Plugins Folder**), and restart to reauthorize.
+## Troubleshooting Steps & Error Messages
 
--  **No Browser Window for Authorization**:
-   - Fix: Verify `ClientID` and redirect URI (`http://localhost:5000/callback`) in Spotify Dashboard.
+If the plugin isn’t working as expected, check the InfoPanel UI for these error messages and follow the steps below to resolve them. These are the messages you’ll see in the **track**, **artist**, or **album** fields—keep an eye on the **"Current Track"** display for the main clue.
 
-- **No Track Info After Authorization**:
-   - Fix: Ensure Spotify is playing and check network.
+### **Error Message: "Spotify client not initialized"**
 
-- **"Spotify client not initialized"**:
-  - **Expected in v1.0.63+**: Appears until you click "Authorize with Spotify" for initial auth ("Auth State" = 0). After auth, restarts should auto-refresh if tokens are present.
-  - **Fallback**: If auth fails ("Auth State" = 3), delete `spotifyrefresh.tmp` from the plugins folder (via **Open Plugins Folder**) and retry with the button.
+- **What It Means**: The plugin hasn’t connected to Spotify yet—either you haven’t authorized it, or the initial setup failed.
+- **How to Fix**:
+  - Click **"Authorize with Spotify"** in the InfoPanel plugin settings.
+  - Follow the browser prompt to log in to your Spotify account and allow access.
+  - Wait a few seconds—the track info should start showing if Spotify is playing.
+- **If It Persists**: Ensure your Client ID is set correctly in `InfoPanel.Spotify.dll.ini` (default file has a placeholder `<your-spotify-client-id>`—replace it with your Spotify app’s Client ID from [developer.spotify.com](https://developer.spotify.com/dashboard)).
 
-- **"Error updating Spotify info"**:
-  - **Fixed in v1.0.65+**: Token expiration should refresh automatically on restart. If persists ("Auth State" = 3), use "Authorize with Spotify" or delete `.tmp` and retry.
+### **Error Message: "Reauthorize Required"**
 
-- **Auth State Sensor**: Monitor the "Auth State" sensor in the UI (v1.0.64+):
-  - 0: "Not Authenticated" (awaiting button click or invalid token).
-  - 1: "Authenticating" (button clicked, awaiting callback).
-  - 2: "Authenticated" (connected and syncing).
-  - 3: "Error" (auth failed; check logs).
+- **What It Means**: The plugin’s refresh token is invalid (e.g., revoked by Spotify after inactivity or manual revocation), and it can’t update your track info.
+- **How to Fix**:
+  - Click **"Authorize with Spotify"** again in the plugin settings.
+  - Log in and grant access in the browser prompt.
+  - The plugin will generate a new token and resume normal operation.
+- **If It Persists**: Delete the `spotifyrefresh.tmp` file in the plugin folder (e.g., `C:\Users\YourName\AppData\Local\InfoPanel\plugins\InfoPanel.Spotify\`), then reauthorize.
+
+### **Error Message: "Error updating Spotify info"**
+
+- **What It Means**: The plugin hit a snag fetching your track data—could be a network issue, rate limit, or token problem it couldn’t recover from.
+- **How to Fix**:
+  - Check your internet connection—ensure Spotify is reachable.
+  - Wait 10-20 seconds; the plugin retries automatically every second.
+  - If still stuck, restart InfoPanel and check if the track info updates.
+  - If it doesn’t clear, click **"Authorize with Spotify"** to refresh the connection.
+- **If It Persists**: Delete `spotifyrefresh.tmp` and reauthorize—might be a stale token or corrupted file.
+
+### **Error Message: "Error refreshing token"**
+
+- **What It Means**: The plugin tried to refresh your access token but failed—likely a network issue or Spotify rejecting the refresh token.
+- **How to Fix**:
+  - Verify your internet connection is stable.
+  - Click **"Authorize with Spotify"** to start fresh with a new token.
+- **If It Persists**: Delete `spotifyrefresh.tmp`, reauthorize, and ensure your Spotify app’s permissions haven’t been revoked at [spotify.com/account/apps](https://www.spotify.com/account/apps).
+
+### **Error Message: "Rate limit exceeded"**
+
+- **What It Means**: The plugin hit Spotify’s API rate limit (estimated ~180 requests/minute)—too many requests too fast.
+- **How to Fix**:
+  - Wait a minute—the plugin will retry automatically after a short delay.
+  - If it keeps happening, reduce other Spotify API usage on your network (e.g., close other Spotify apps or plugins).
+- **If It Persists**: Restart InfoPanel to reset the rate limiter—should be rare with normal use.
+
+### **Error Message: "No track playing"**
+
+- **What It Means**: Spotify isn’t playing anything right now, or the plugin can’t detect playback.
+- **How to Fix**:
+  - Open Spotify and start playing a track.
+  - Wait 1-2 seconds—track info should appear.
+- **If It Persists**: Ensure Spotify is running and your account is active—pause/unpause to nudge it.
+
+### **Error Message: "Error saving tokens: [details]"**
+
+- **What It Means**: The plugin couldn’t write to `spotifyrefresh.tmp`—might be a file permission or disk issue.
+- **How to Fix**:
+  - Check if the plugin folder (e.g., `C:\Users\YourName\AppData\Local\InfoPanel\plugins\InfoPanel.Spotify\`) is writable—right-click, **Properties**, **Security** tab.
+  - Delete `spotifyrefresh.tmp` if it exists, then reauthorize via **"Authorize with Spotify"**.
+- **If It Persists**: Run InfoPanel as Administrator to rule out permission issues.
+
+### **Error Message: "Spotify ClientID is not set or is invalid"**
+
+- **What It Means**: The `ClientID` in `InfoPanel.Spotify.dll.ini` is missing or wrong—setup didn’t complete.
+- **How to Fix**:
+  - Open `InfoPanel.Spotify.dll.ini` in the plugin folder.
+  - Replace `<your-spotify-client-id>` under `[Spotify Plugin]` with your Spotify app’s Client ID (get it from [developer.spotify.com](https://developer.spotify.com/dashboard)).
+  - Save, restart InfoPanel, and authorize again.
+- **If It Persists**: Double-check the ID—copy-paste it exactly, no extra spaces.
+
+### **General Tips**
+
+- **Restart InfoPanel**: Fixes most temporary glitches—close and reopen the app.
+- **Check Spotify**: Ensure it’s playing and your account is logged in—plugin mirrors what’s active.
+- **Logs**: If you’re tech-savvy, check `Debug.WriteLine` output in a debugger for deeper clues (e.g., `"Token expired during playback fetch"`).
+
+### **Still Stuck?**
+
+If none of these fix it, your token might be revoked or there’s a Spotify API hiccup. Delete `spotifyrefresh.tmp`, reauthorize, and try again. For persistent issues, reach out via GitHub Issues with the error message and what you’ve tried!
+
+## Contributing
+
+Found a bug or have a feature idea? Open an [issue](https://github.com/F3NN3X/InfoPanel.Spotify/issues) or submit a [pull request](https://github.com/F3NN3X/InfoPanel.Spotify/pulls) on the repository!
 
 ## Requirements for compile
 - .NET 8.0

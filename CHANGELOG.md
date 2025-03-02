@@ -4,6 +4,43 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
 # Changelog
 
+## [1.0.90] - 2025-03-02
+### Changed
+- Reduced `TokenRefreshCheckIntervalSeconds` from 1500s (~25m) to 60s (~1m) in `StartBackgroundTokenRefresh` to ensure timely token refresh before expiry.
+- Fixed `_trackProgress.Value` type mismatch in `GetSpotifyInfo` from string `"No track playing"` to float `0.0F`, resolving compile error CS0029.
+### Purpose
+- Ensures background refresh triggers reliably within the 60s buffer (`TokenExpirationBufferSeconds`), preventing token expiry failures during long runs (e.g., >2h tests with multiple refreshes).
+- Corrects type error for `PluginSensor` value, ensuring proper compilation and functionality.
+
+## [1.0.88] - 2025-03-02
+### Changed
+- Simplified `SetDefaultValues` and `HandleError` methods by removing redundant `"Unknown"` fallback logic in `SetDefaultValues`.
+- Removed unused `using` statements (e.g., `System.ComponentModel`, `System.Web`).
+### Purpose
+- Reduces code redundancy and improves readability without altering functionality—pure style cleanup.
+
+## [1.0.87] - 2025-03-02
+### Changed
+- Fixed redundant `TryInitializeClientWithAccessToken` calls in `Initialize` by storing result in a `bool` variable, reducing log noise (e.g., duplicate "Initialized Spotify client" messages).
+- Updated `ExecuteWithRetry` to throw `AggregateException` with retry context instead of bare `lastException`.
+- Restricted `_forceInvalidGrant` loading from `.ini` to debug builds using `#if DEBUG`, forcing `false` in release builds.
+### Purpose
+- Cleaner initialization logs, better error context for retries, and production safety by disabling debug flags in release.
+
+## [1.0.86] - 2025-03-02
+### Changed
+- Enhanced refresh logging in `StartBackgroundTokenRefresh` and `TryRefreshTokenAsync` for clearer timing diagnostics (e.g., "Background token refresh triggered at UTC...").
+- Ensured `SaveTokens` consistently updates `.tmp` file during refreshes, fixing occasional non-updates.
+- Adjusted `forceInvalidGrant` timing to align with refresh simulation in debug mode.
+### Purpose
+- Improved debug visibility into refresh cycles, fixed `.tmp` persistence issues (e.g., token expiry not updating), and refined debug simulation behavior.
+
+## [1.0.85] - 2025-03-02
+### Changed
+- Silenced nullable warning CS8625 in `TryRefreshTokenAsync` by adding `null!` to `APIException` throw for `forceInvalidGrant`.
+### Purpose
+- Clean compile with no warnings—cosmetic fix, no functional change.
+
 ## v1.0.70 (Mar 1, 2025)
 - **Optimized**: Background refresh interval.
   - **Changes**: Increased `TokenRefreshCheckIntervalSeconds` from 30s to 1740s (~29 minutes) for ~2 checks/hour.

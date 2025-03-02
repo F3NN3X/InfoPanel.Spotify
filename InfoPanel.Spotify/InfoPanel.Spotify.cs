@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -10,7 +10,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using InfoPanel.Plugins;
 using IniParser;
 using IniParser.Model;
@@ -19,18 +18,21 @@ using SpotifyAPI.Web.Auth;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.0.70
+ * Version: 1.0.90
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
- *   - v1.0.70 (Mar 1, 2025): Optimized background refresh interval.
- *     - **Changes**: Increased `TokenRefreshCheckIntervalSeconds` from 30s to 1740s (~29 minutes) for ~2 checks/hour.
- *     - **Purpose**: Reduce excessive polling while ensuring refresh before 1-hour token expiry with 60s buffer.
- *   - v1.0.69 (Mar 1, 2025): Fixed background refresh startup reliability.
- *     - **Changes**: Replaced blocking `.GetAwaiter().GetResult()` in `Initialize()` with async `Task.Run()` for refresh, enhanced logging to track task execution, ensured `_authState` syncs on all failures.
- *     - **Purpose**: Prevent deadlocks, confirm background task runs, and align auth state with refresh success/failure.
- *   - v1.0.68 (Mar 1, 2025): Robustified background token refresh.
- *     - **Changes**: Reduced `TokenRefreshCheckIntervalSeconds` to 30s, forced initial refresh in `Initialize()`, enhanced state sync and logging, avoided blocking in refresh startup.
- *     - **Purpose**: Ensure token refreshes catch expiry early, run reliably, and log clearly for debugging.
+ *   - v1.0.90 (Mar 2, 2025): Fixed background refresh timing.
+ *     - **Changes**: Reduced `TokenRefreshCheckIntervalSeconds` from 1500s to 60s to ensure timely token refresh before expiry. Fixed `_trackProgress.Value` type mismatch from string to float in `GetSpotifyInfo`.
+ *     - **Purpose**: Ensures background refresh triggers reliably within 60s buffer, preventing token expiry failures; corrects compile error CS0029.
+ *   - v1.0.88 (Mar 2, 2025): Style cleanup.
+ *     - **Changes**: Simplified `SetDefaultValues`/`HandleError`, removed unused `using`s.
+ *     - **Purpose**: Reduce redundancy, declutter code—no functional impact.
+ *   - v1.0.87 (Mar 2, 2025): Polished initialization and error handling.
+ *     - **Changes**: Fixed redundant `TryInitializeClientWithAccessToken` calls, used `AggregateException` in `ExecuteWithRetry`, restricted `_forceInvalidGrant` to debug builds.
+ *     - **Purpose**: Cleaner logs, better error context, production safety.
+ *   - v1.0.86 (Mar 2, 2025): Fixed token update and refresh timing.
+ *     - **Changes**: Enhanced refresh logging, ensured `SaveTokens` updates `.tmp`, adjusted `forceInvalidGrant` timing.
+ *     - **Purpose**: Fix `.tmp` not updating, clarify refresh behavior, avoid early triggers.
  *   - For full history, see CHANGELOG.md.
  * Note: Spotify API rate limits estimated at ~180 requests/minute (https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
  */
@@ -70,6 +72,8 @@ namespace InfoPanel.Spotify
         private string? _refreshToken;
         private string? _accessToken;
         private DateTime _tokenExpiration;
+        private bool _refreshFailed; // Flag to stop spam after refresh failure
+        private bool _forceInvalidGrant; // Debug flag to simulate invalid_grant, loaded from .ini in debug only
 
         // Background refresh task (non-nullable, always initialized)
         private CancellationTokenSource _refreshCancellationTokenSource;
@@ -107,30 +111,37 @@ namespace InfoPanel.Spotify
         private const int ProgressToleranceMs = 1500;
         private const int PauseThreshold = 2;
         private const int TokenExpirationBufferSeconds = 60;
-        private const int TokenRefreshCheckIntervalSeconds = 1740; // ~29 minutes for ~2 checks/hour, hits 58m
+        private const int TokenRefreshCheckIntervalSeconds = 60; // ~1 minute for frequent checks, hits 60s buffer
         private const int TokenRefreshMaxRetries = 3;
         private const int TokenRefreshRetryDelaySeconds = 5;
+        private const int TokenNearExpiryThresholdSeconds = 300; // 5 minutes
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.70")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.90")
         {
             _refreshCancellationTokenSource = new CancellationTokenSource();
+            _refreshFailed = false;
+#if DEBUG
+            _forceInvalidGrant = false; // Default, overridden by .ini in debug
+#else
+            _forceInvalidGrant = false; // Hardcoded false in release
+#endif
         }
 
         public override string? ConfigFilePath => _configFilePath;
 
-        // Initializes the plugin (reentrant, with immediate async refresh for expired tokens)
+        // Initializes the plugin (reentrant, with immediate sync refresh for expired or near-expiry tokens)
         public override void Initialize()
         {
-            Debug.WriteLine("Initialize called");
-
+            Debug.WriteLine($"Initialize called at UTC: {DateTime.UtcNow.ToString("o")}; forceInvalidGrant: {_forceInvalidGrant}");
             // Ensure clean state for reentrancy
             if (!_refreshCancellationTokenSource.IsCancellationRequested)
             {
                 _refreshCancellationTokenSource.Cancel();
             }
             _refreshCancellationTokenSource = new CancellationTokenSource();
+            _refreshFailed = false; // Reset on init
 
             Assembly assembly = Assembly.GetExecutingAssembly();
             string basePath = assembly.ManifestModule.FullyQualifiedName;
@@ -146,8 +157,9 @@ namespace InfoPanel.Spotify
                 config = new IniData();
                 config["Spotify Plugin"]["ClientID"] = "<your-spotify-client-id>";
                 config["Spotify Plugin"]["MaxDisplayLength"] = "20";
+                config["Spotify Plugin"]["ForceInvalidGrant"] = "false"; // Add debug flag to .ini
                 parser.WriteFile(_configFilePath, config);
-                Debug.WriteLine("Config file created with placeholder ClientID and MaxDisplayLength.");
+                Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, and ForceInvalidGrant.");
             }
             else
             {
@@ -174,7 +186,16 @@ namespace InfoPanel.Spotify
                     {
                         _maxDisplayLength = maxLength;
                     }
-                    Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}");
+
+#if DEBUG
+                    // Load ForceInvalidGrant from .ini only in debug builds
+                    if (config["Spotify Plugin"].ContainsKey("ForceInvalidGrant") &&
+                        bool.TryParse(config["Spotify Plugin"]["ForceInvalidGrant"], out bool forceInvalid))
+                    {
+                        _forceInvalidGrant = forceInvalid;
+                    }
+#endif
+                    Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, ForceInvalidGrant: {_forceInvalidGrant}");
                 }
                 catch (Exception ex)
                 {
@@ -188,6 +209,7 @@ namespace InfoPanel.Spotify
             {
                 try
                 {
+                    Debug.WriteLine($"Token file last modified UTC: {File.GetLastWriteTimeUtc(_tokenFilePath).ToString("o")}");
                     using (FileStream fileStream = new FileStream(_tokenFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
                     using (StreamReader reader = new StreamReader(fileStream))
                     {
@@ -197,14 +219,14 @@ namespace InfoPanel.Spotify
                         _refreshToken = tokenConfig["Spotify Tokens"]["RefreshToken"];
                         _accessToken = tokenConfig["Spotify Tokens"]["AccessToken"];
                         string expirationStr = tokenConfig["Spotify Tokens"]["TokenExpiration"];
-                        if (!DateTime.TryParse(expirationStr, out DateTime expiration))
+                        if (!DateTime.TryParse(expirationStr, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime expiration))
                         {
                             Debug.WriteLine($"Invalid TokenExpiration format in .tmp: '{expirationStr}'; resetting to MinValue.");
                             _tokenExpiration = DateTime.MinValue;
                         }
                         else
                         {
-                            _tokenExpiration = expiration;
+                            _tokenExpiration = expiration.ToUniversalTime(); // Ensure UTC
                         }
 
                         if (string.IsNullOrEmpty(_refreshToken) || string.IsNullOrEmpty(_accessToken))
@@ -215,7 +237,7 @@ namespace InfoPanel.Spotify
                             _tokenExpiration = DateTime.MinValue;
                         }
                     }
-                    Debug.WriteLine($"Loaded tokens from spotifyrefresh.tmp - Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Access Token: {(string.IsNullOrEmpty(_accessToken) ? "null" : "set")}, Expiration: {_tokenExpiration}");
+                    Debug.WriteLine($"Loaded tokens from spotifyrefresh.tmp - Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Access Token: {(string.IsNullOrEmpty(_accessToken) ? "null" : "set")}, Expiration UTC: {_tokenExpiration.ToString("o")}, Kind: {_tokenExpiration.Kind}");
                 }
                 catch (Exception ex)
                 {
@@ -239,46 +261,40 @@ namespace InfoPanel.Spotify
                     Debug.WriteLine("No access token; waiting for user to authorize via button.");
                     _authState.Value = (float)AuthState.NotAuthenticated;
                 }
-                else if (!TryInitializeClientWithAccessToken())
+                else
                 {
-                    Debug.WriteLine("Access token invalid or expired; launching immediate async refresh...");
-                    if (!string.IsNullOrEmpty(_refreshToken))
+                    bool isValid = TryInitializeClientWithAccessToken();
+                    bool isNearExpiry = _tokenExpiration != DateTime.MinValue && DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenNearExpiryThresholdSeconds);
+                    if (!isValid || isNearExpiry)
                     {
-                        // Launch refresh async to avoid blocking Initialize()
-                        Task.Run(async () =>
+                        Debug.WriteLine($"Token check - Valid init: {isValid}, Near expiry: {isNearExpiry} (Expiration UTC: {_tokenExpiration.ToString("o")}, Now UTC: {DateTime.UtcNow.ToString("o")}); attempting immediate sync refresh...");
+                        if (!string.IsNullOrEmpty(_refreshToken))
                         {
-                            try
+                            // Synchronous refresh to ensure token is valid before proceeding
+                            if (Task.Run(() => TryRefreshTokenAsync()).GetAwaiter().GetResult())
                             {
-                                if (await TryRefreshTokenAsync())
-                                {
-                                    Debug.WriteLine("Async token refresh succeeded in Initialize; starting background task.");
-                                    _authState.Value = (float)AuthState.Authenticated;
-                                    StartBackgroundTokenRefresh();
-                                }
-                                else
-                                {
-                                    Debug.WriteLine("Async token refresh failed in Initialize; waiting for user to authorize via button.");
-                                    _authState.Value = (float)AuthState.NotAuthenticated;
-                                }
+                                Debug.WriteLine("Sync token refresh succeeded in Initialize; starting background task.");
+                                _authState.Value = (float)AuthState.Authenticated;
+                                StartBackgroundTokenRefresh();
                             }
-                            catch (Exception ex)
+                            else
                             {
-                                Debug.WriteLine($"Async refresh in Initialize failed: {ex.Message}");
-                                _authState.Value = (float)AuthState.Error;
+                                Debug.WriteLine("Sync token refresh failed in Initialize; waiting for user to reauthorize.");
+                                _authState.Value = (float)AuthState.NotAuthenticated;
                             }
-                        });
+                        }
+                        else
+                        {
+                            Debug.WriteLine("No refresh token available; waiting for user to authorize via button.");
+                            _authState.Value = (float)AuthState.NotAuthenticated;
+                        }
                     }
                     else
                     {
-                        Debug.WriteLine("No refresh token available; waiting for user to authorize via button.");
-                        _authState.Value = (float)AuthState.NotAuthenticated;
+                        Debug.WriteLine("Token valid and not near expiry; starting background refresh.");
+                        _authState.Value = (float)AuthState.Authenticated;
+                        StartBackgroundTokenRefresh();
                     }
-                }
-                else
-                {
-                    Debug.WriteLine("Token valid; starting background refresh.");
-                    _authState.Value = (float)AuthState.Authenticated;
-                    StartBackgroundTokenRefresh();
                 }
             }
             else
@@ -300,7 +316,8 @@ namespace InfoPanel.Spotify
         [PluginAction("Authorize with Spotify")]
         public void StartSpotifyAuth()
         {
-            Debug.WriteLine("Authorize with Spotify button clicked; initiating authentication...");
+            Debug.WriteLine($"Authorize with Spotify button clicked at UTC: {DateTime.UtcNow.ToString("o")}; initiating authentication...");
+            _refreshFailed = false; // Reset on manual auth
             _authState.Value = (float)AuthState.Authenticating;
             StartAuthentication();
         }
@@ -308,24 +325,32 @@ namespace InfoPanel.Spotify
         // Starts a background task to periodically refresh the access token with retries
         private void StartBackgroundTokenRefresh()
         {
+            Debug.WriteLine($"Entering StartBackgroundTokenRefresh at UTC: {DateTime.UtcNow.ToString("o")}; forceInvalidGrant: {_forceInvalidGrant}");
             Task.Run(async () =>
             {
-                Debug.WriteLine($"Background refresh task started at {DateTime.UtcNow}");
+                Debug.WriteLine($"Background refresh task started at UTC: {DateTime.UtcNow.ToString("o")}; forceInvalidGrant: {_forceInvalidGrant}");
                 while (!_refreshCancellationTokenSource.Token.IsCancellationRequested)
                 {
                     try
                     {
-                        Debug.WriteLine($"Background refresh loop iteration at {DateTime.UtcNow}");
+                        Debug.WriteLine($"Background refresh loop iteration at UTC: {DateTime.UtcNow.ToString("o")}");
                         if (_spotifyClient == null)
                         {
-                            Debug.WriteLine($"Spotify client is null at {DateTime.UtcNow}; skipping refresh attempt.");
+                            Debug.WriteLine($"Spotify client is null at UTC: {DateTime.UtcNow.ToString("o")}; skipping refresh attempt.");
                             continue;
                         }
 
-                        if (!string.IsNullOrEmpty(_refreshToken) && !string.IsNullOrEmpty(_clientID) &&
-                            DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
+                        if (_refreshFailed)
                         {
-                            Debug.WriteLine($"Background token refresh triggered at {DateTime.UtcNow}; token expires at {_tokenExpiration}");
+                            Debug.WriteLine($"Refresh previously failed at UTC: {DateTime.UtcNow.ToString("o")}; awaiting manual reauthorization.");
+                            continue;
+                        }
+
+                        DateTime now = DateTime.UtcNow;
+                        DateTime refreshThreshold = _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds);
+                        if (!string.IsNullOrEmpty(_refreshToken) && !string.IsNullOrEmpty(_clientID) && now >= refreshThreshold)
+                        {
+                            Debug.WriteLine($"Background token refresh triggered at UTC: {now.ToString("o")}; token expires at UTC: {_tokenExpiration.ToString("o")}; refresh threshold UTC: {refreshThreshold.ToString("o")}; forceInvalidGrant: {_forceInvalidGrant}");
                             int attempts = 0;
                             while (attempts < TokenRefreshMaxRetries)
                             {
@@ -333,7 +358,7 @@ namespace InfoPanel.Spotify
                                 {
                                     if (await TryRefreshTokenAsync())
                                     {
-                                        Debug.WriteLine($"Background refresh succeeded at {DateTime.UtcNow}; new expiry: {_tokenExpiration}");
+                                        Debug.WriteLine($"Background refresh succeeded at UTC: {DateTime.UtcNow.ToString("o")}; new expiry UTC: {_tokenExpiration.ToString("o")}");
                                         break;
                                     }
                                 }
@@ -342,30 +367,31 @@ namespace InfoPanel.Spotify
                                     attempts++;
                                     if (attempts >= TokenRefreshMaxRetries)
                                     {
-                                        Debug.WriteLine($"Background token refresh failed after {TokenRefreshMaxRetries} attempts at {DateTime.UtcNow}: {ex.Message}");
+                                        Debug.WriteLine($"Background token refresh failed after {TokenRefreshMaxRetries} attempts at UTC: {DateTime.UtcNow.ToString("o")}: {ex.Message}");
+                                        _refreshFailed = true; // Mark as failed to stop spam
                                         _authState.Value = (float)AuthState.Error;
                                         break;
                                     }
-                                    Debug.WriteLine($"Retry {attempts}/{TokenRefreshMaxRetries} for background token refresh failed at {DateTime.UtcNow}: {ex.Message}");
+                                    Debug.WriteLine($"Retry {attempts}/{TokenRefreshMaxRetries} for background token refresh failed at UTC: {DateTime.UtcNow.ToString("o")}: {ex.Message}");
                                     await Task.Delay(TimeSpan.FromSeconds(TokenRefreshRetryDelaySeconds * attempts), _refreshCancellationTokenSource.Token);
                                 }
                             }
                         }
                         else
                         {
-                            Debug.WriteLine($"Background refresh check at {DateTime.UtcNow}; token still valid until {_tokenExpiration}");
+                            Debug.WriteLine($"Background refresh check at UTC: {now.ToString("o")}; token still valid until UTC: {_tokenExpiration.ToString("o")}; refresh threshold UTC: {refreshThreshold.ToString("o")}; forceInvalidGrant: {_forceInvalidGrant}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Unexpected error in background token refresh task at {DateTime.UtcNow}: {ex.Message}");
+                        Debug.WriteLine($"Unexpected error in background token refresh task at UTC: {DateTime.UtcNow.ToString("o")}: {ex.Message}");
                     }
 
                     await Task.Delay(TimeSpan.FromSeconds(TokenRefreshCheckIntervalSeconds), _refreshCancellationTokenSource.Token);
                 }
-                Debug.WriteLine($"Background refresh task stopped at {DateTime.UtcNow}");
+                Debug.WriteLine($"Background refresh task stopped at UTC: {DateTime.UtcNow.ToString("o")}");
             }, _refreshCancellationTokenSource.Token);
-            Debug.WriteLine($"Background refresh task launched at {DateTime.UtcNow}");
+            Debug.WriteLine($"Background refresh task launched at UTC: {DateTime.UtcNow.ToString("o")}");
         }
 
         // Attempts to initialize SpotifyClient with stored access token if valid
@@ -378,11 +404,10 @@ namespace InfoPanel.Spotify
                 return false;
             }
 
-            if (DateTime.UtcNow >= _tokenExpiration.AddSeconds(-TokenExpirationBufferSeconds))
+            // Check absolute expiry (log only, handled by isNearExpiry in Initialize)
+            if (DateTime.UtcNow >= _tokenExpiration)
             {
-                Debug.WriteLine($"Access token expired (Expiration: {_tokenExpiration}, Now: {DateTime.UtcNow}); refresh required.");
-                _authState.Value = (float)AuthState.NotAuthenticated;
-                return false;
+                Debug.WriteLine($"Access token fully expired (Expiration UTC: {_tokenExpiration.ToString("o")}, Kind: {_tokenExpiration.Kind}, Now UTC: {DateTime.UtcNow.ToString("o")}, Kind: {DateTime.UtcNow.Kind}); refresh required.");
             }
 
             try
@@ -406,19 +431,27 @@ namespace InfoPanel.Spotify
         // Attempts to refresh the Spotify access token using the stored refresh token
         private async Task<bool> TryRefreshTokenAsync()
         {
-            if (_refreshToken == null || _clientID == null)
+            if (_refreshFailed || _refreshToken == null || _clientID == null)
             {
-                Debug.WriteLine("Refresh token or ClientID missing.");
+                if (!_refreshFailed) Debug.WriteLine("Refresh token or ClientID missing; cannot refresh.");
                 _authState.Value = (float)AuthState.NotAuthenticated;
                 return false;
             }
 
             try
             {
-                Debug.WriteLine("Attempting token refresh with Spotify API...");
+                Debug.WriteLine($"Attempting token refresh with Spotify API... (forceInvalidGrant: {_forceInvalidGrant})");
+                Debug.WriteLine($"Current token expiration UTC: {_tokenExpiration.ToString("o")}");
                 var response = await new OAuthClient().RequestToken(
                     new PKCETokenRefreshRequest(_clientID, _refreshToken)
                 );
+
+                if (_forceInvalidGrant)
+                {
+                    await Task.Delay(1000); // Short delay to simulate network
+                    throw new APIException("Simulated invalid_grant for testing", null!);
+                }
+
                 var authenticator = new PKCEAuthenticator(_clientID, response);
                 var config = SpotifyClientConfig.CreateDefault().WithAuthenticator(authenticator);
                 _spotifyClient = new SpotifyClient(config);
@@ -428,9 +461,32 @@ namespace InfoPanel.Spotify
                 _tokenExpiration = DateTime.UtcNow.AddSeconds(response.ExpiresIn);
                 SaveTokens(_accessToken, _tokenExpiration);
 
-                Debug.WriteLine("Successfully refreshed token.");
+                Debug.WriteLine($"Successfully refreshed token; new expiry UTC: {_tokenExpiration.ToString("o")}");
                 _authState.Value = (float)AuthState.Authenticated;
                 return true;
+            }
+            catch (APIException apiEx) when (apiEx.Message.Contains("invalid_grant"))
+            {
+                Debug.WriteLine($"Error refreshing token: invalid_grant - refresh token likely revoked by Spotify after prolonged inactivity or debug simulation (forceInvalidGrant: {_forceInvalidGrant}).");
+                HandleError("Error refreshing token - refresh token invalid, please reauthorize");
+                _refreshToken = null;
+                _accessToken = null;
+                _refreshFailed = true; // Mark as failed to stop spam
+                _authState.Value = (float)AuthState.NotAuthenticated; // Set to NotAuthenticated for reauth prompt
+                try
+                {
+                    if (File.Exists(_tokenFilePath))
+                    {
+                        Debug.WriteLine($"Attempting to delete token file '{_tokenFilePath}' due to invalid_grant...");
+                        File.Delete(_tokenFilePath);
+                        Debug.WriteLine($"Deleted token file '{_tokenFilePath}' successfully.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to delete token file: {ex.Message}");
+                }
+                return false;
             }
             catch (Exception ex)
             {
@@ -438,6 +494,7 @@ namespace InfoPanel.Spotify
                 HandleError("Error refreshing token");
                 _refreshToken = null;
                 _accessToken = null;
+                _refreshFailed = true; // Mark as failed to stop spam
                 _authState.Value = (float)AuthState.Error;
                 return false;
             }
@@ -448,6 +505,7 @@ namespace InfoPanel.Spotify
         {
             try
             {
+                Debug.WriteLine($"Saving tokens - AccessToken: {accessToken.Substring(0, 10)}..., RefreshToken: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Expiration UTC: {expiration.ToString("o")}");
                 var parser = new FileIniDataParser();
                 IniData tokenConfig = new IniData();
 
@@ -456,11 +514,18 @@ namespace InfoPanel.Spotify
                 tokenConfig["Spotify Tokens"]["TokenExpiration"] = expiration.ToString("o");
 
                 parser.WriteFile(_tokenFilePath, tokenConfig);
-                Debug.WriteLine("Tokens saved to spotifyrefresh.tmp successfully.");
+                if (File.Exists(_tokenFilePath))
+                {
+                    Debug.WriteLine($"Tokens saved to spotifyrefresh.tmp successfully; file last modified UTC: {File.GetLastWriteTimeUtc(_tokenFilePath).ToString("o")}");
+                }
+                else
+                {
+                    Debug.WriteLine($"Failed to verify token file existence after save: {_tokenFilePath}");
+                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error saving tokens to spotifyrefresh.tmp: {ex.Message}");
+                Debug.WriteLine($"Error saving tokens to spotifyrefresh.tmp: {ex.Message}; StackTrace: {ex.StackTrace}");
                 HandleError($"Error saving tokens: {ex.Message}");
                 _authState.Value = (float)AuthState.Error;
             }
@@ -566,6 +631,7 @@ namespace InfoPanel.Spotify
         // Cleans up resources when the plugin is closed (reentrant)
         public override void Close()
         {
+            Debug.WriteLine($"Close called at UTC: {DateTime.UtcNow.ToString("o")}; TokenExpiration UTC: {_tokenExpiration.ToString("o")}, AuthState: {_authState.Value}");
             if (!_refreshCancellationTokenSource.IsCancellationRequested)
             {
                 _refreshCancellationTokenSource.Cancel();
@@ -583,21 +649,26 @@ namespace InfoPanel.Spotify
         // Synchronous update method required by BasePlugin
         public override void Update()
         {
-            // Sync bridge to async; suboptimal but required by BasePlugin - ideally InfoPanel would use UpdateAsync directly
             UpdateAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
 
         // Asynchronous update method to fetch and display Spotify data
         public override async Task UpdateAsync(CancellationToken cancellationToken)
         {
-            Debug.WriteLine("UpdateAsync called");
+            Debug.WriteLine($"UpdateAsync called at UTC: {DateTime.UtcNow.ToString("o")}");
+            if (_refreshFailed)
+            {
+                Debug.WriteLine("Skipping update due to previous refresh failure.");
+                _currentTrack.Value = "Reauthorize Required"; // Hint to user
+                return;
+            }
             await GetSpotifyInfo();
         }
 
         // Fetches and updates track info, using caching to optimize API calls
         private async Task GetSpotifyInfo()
         {
-            Debug.WriteLine("GetSpotifyInfo called");
+            Debug.WriteLine($"GetSpotifyInfo called at UTC: {DateTime.UtcNow.ToString("o")}");
             Debug.WriteLine($"SpotifyClient null? {_spotifyClient == null}");
 
             if (_spotifyClient == null)
@@ -771,6 +842,20 @@ namespace InfoPanel.Spotify
                     }
                 }
             }
+            catch (AggregateException aggEx) when (aggEx.InnerExceptions.Any(e => e is APIException apiEx && apiEx.Message.Contains("expired")))
+            {
+                Debug.WriteLine($"Token expired during playback fetch at UTC: {DateTime.UtcNow.ToString("o")}; attempting refresh...");
+                if (await TryRefreshTokenAsync())
+                {
+                    Debug.WriteLine("Token refreshed successfully during playback fetch; retrying...");
+                    await GetSpotifyInfo(); // Retry playback fetch with new token
+                }
+                else
+                {
+                    Debug.WriteLine("Failed to refresh token during playback fetch.");
+                    HandleError("Error updating Spotify info - token refresh failed");
+                }
+            }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error fetching Spotify playback: {ex.Message}");
@@ -843,11 +928,11 @@ namespace InfoPanel.Spotify
             }
 
             Debug.WriteLine($"All {maxAttempts} retry attempts failed: {lastException?.Message}");
-            throw lastException!; // Throw only the final exception after retries
+            throw new AggregateException($"All {maxAttempts} retry attempts failed.", lastException!);
         }
 
-        // Resets UI elements to default values on error or no playback
-        private void SetDefaultValues(string message = "Unknown")
+        // Resets UI elements to default values with provided message
+        private void SetDefaultValues(string message)
         {
             _currentTrack.Value = message;
             _artist.Value = message;
@@ -857,7 +942,6 @@ namespace InfoPanel.Spotify
             _trackProgress.Value = 0.0F;
             _coverUrl.Value = string.Empty;
             Debug.WriteLine($"Set default values: {message}");
-            if (message == "Unknown") Debug.WriteLine("Set default values: Message set to default 'Unknown', potential unhandled error.");
         }
 
         // Logs errors and updates UI with error message
