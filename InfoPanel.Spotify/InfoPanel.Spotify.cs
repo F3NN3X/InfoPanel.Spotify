@@ -21,6 +21,8 @@ using SpotifyAPI.Web.Auth;
  * Version: 1.0.90
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
+  *   - v1.0.91 (June 10, 2025): Fixed background refresh timing.
+ *     - **Changes**: Changed callback url from localhost to 127.0.0.1 to comply with new Spotify guidelines: https://developer.spotify.com/documentation/web-api/concepts/redirect_uri
  *   - v1.0.90 (Mar 2, 2025): Fixed background refresh timing.
  *     - **Changes**: Reduced `TokenRefreshCheckIntervalSeconds` from 1500s to 60s to ensure timely token refresh before expiry. Fixed `_trackProgress.Value` type mismatch from string to float in `GetSpotifyInfo`.
  *     - **Purpose**: Ensures background refresh triggers reliably within 60s buffer, preventing token expiry failures; corrects compile error CS0029.
@@ -118,7 +120,7 @@ namespace InfoPanel.Spotify
 
         // Constructor: Initializes the plugin with metadata
         public SpotifyPlugin()
-            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.90")
+            : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.0.91")
         {
             _refreshCancellationTokenSource = new CancellationTokenSource();
             _refreshFailed = false;
@@ -539,7 +541,7 @@ namespace InfoPanel.Spotify
                 var (verifier, challenge) = PKCEUtil.GenerateCodes();
                 _verifier = verifier;
 
-                _server = new EmbedIOAuthServer(new Uri("http://localhost:5000/callback"), 5000);
+                _server = new EmbedIOAuthServer(new Uri("http://127.0.0.1:5000/callback"), 5000);
                 _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
                 _server.Start();
 

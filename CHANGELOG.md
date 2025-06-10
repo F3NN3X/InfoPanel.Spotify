@@ -4,6 +4,10 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
 # Changelog
 
+## [1.0.91] - 2025-03-02
+### Changed
+- Changed callback url from localhost to 127.0.0.1 to comply with new Spotify guidelines: https://developer.spotify.com/documentation/web-api/concepts/redirect_uri
+
 ## [1.0.90] - 2025-03-02
 ### Changed
 - Reduced `TokenRefreshCheckIntervalSeconds` from 1500s (~25m) to 60s (~1m) in `StartBackgroundTokenRefresh` to ensure timely token refresh before expiry.
