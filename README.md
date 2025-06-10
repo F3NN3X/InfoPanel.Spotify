@@ -41,7 +41,7 @@ Follow these steps to get the SpotifyPlugin working with InfoPanel:
 2. Log in with your Spotify account.
 3. Click **Create an App**:
    - Enter a name (e.g., "InfoPanel Spotify Plugin") and description.
-   - Set the **Redirect URI** to `http://localhost:5000/callback`.
+   - Set the **Redirect URI** to `http://127.0.0.1:5000/callback`.
    - Accept the terms and click **Create**.
 4. Copy the **Client ID** from the app’s dashboard.
 5. Paste it into `InfoPanel.Spotify.dll.ini` as described in step 3 above.
@@ -66,7 +66,7 @@ If the plugin isn’t working as expected, check the InfoPanel UI for these erro
   - Click **"Authorize with Spotify"** again in the plugin settings.
   - Log in and grant access in the browser prompt.
   - The plugin will generate a new token and resume normal operation.
-- **If It Persists**: Delete the `spotifyrefresh.tmp` file in the plugin folder (e.g., `C:\Users\YourName\AppData\Local\InfoPanel\plugins\InfoPanel.Spotify\`), then reauthorize.
+- **If It Persists**: Delete the `spotifyrefresh.tmp` file in the plugin folder (e.g., `C:\ProgramData\InfoPanel\plugins\InfoPanel.Spotify\`), then reauthorize.
 
 ### **Error Message: "Error updating Spotify info"**
 
@@ -106,7 +106,7 @@ If the plugin isn’t working as expected, check the InfoPanel UI for these erro
 
 - **What It Means**: The plugin couldn’t write to `spotifyrefresh.tmp`—might be a file permission or disk issue.
 - **How to Fix**:
-  - Check if the plugin folder (e.g., `C:\Users\YourName\AppData\Local\InfoPanel\plugins\InfoPanel.Spotify\`) is writable—right-click, **Properties**, **Security** tab.
+  - Check if the plugin folder (e.g., `C:\ProgramData\InfoPanel\plugins\InfoPanel.Spotify\`) is writable—right-click, **Properties**, **Security** tab.
   - Delete `spotifyrefresh.tmp` if it exists, then reauthorize via **"Authorize with Spotify"**.
 
 ### **Error Message: "Spotify ClientID is not set or is invalid"**
