@@ -4,7 +4,7 @@ All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
 # Changelog
 
-## [1.0.91] - 2025-03-02
+## [1.0.91] - June 10 2025
 ### Changed
 - Changed callback url from localhost to 127.0.0.1 to comply with new Spotify guidelines: https://developer.spotify.com/documentation/web-api/concepts/redirect_uri
 
