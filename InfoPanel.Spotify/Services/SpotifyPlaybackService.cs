@@ -1,9 +1,5 @@
-using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Threading.Tasks;
 using SpotifyAPI.Web;
 
 namespace InfoPanel.Spotify.Services;
@@ -51,7 +47,7 @@ public sealed class SpotifyPlaybackService
     /// <summary>
     /// Sets the Spotify client to use for API requests.
     /// </summary>
-    public void SetClient(SpotifyClient client) => 
+    public void SetClient(SpotifyClient client) =>
         _spotifyClient = client;
 
     /// <summary>
@@ -91,7 +87,7 @@ public sealed class SpotifyPlaybackService
                 _isPlaying = false;
                 _trackEnded = true;
                 _trackEndTime = DateTime.UtcNow;
-                
+
                 var trackEndedInfo = new PlaybackInfo(
                     TrackName: "Track Ended",
                     ArtistName: _lastArtistName ?? "Unknown",
@@ -102,7 +98,7 @@ public sealed class SpotifyPlaybackService
                     IsPlaying: false,
                     TrackId: _lastTrackId
                 );
-                
+
                 OnPlaybackUpdated(trackEndedInfo);
                 return trackEndedInfo;
             }
@@ -117,7 +113,7 @@ public sealed class SpotifyPlaybackService
                 IsPlaying: _isPlaying,
                 TrackId: _lastTrackId
             );
-            
+
             Debug.WriteLine($"Estimated - Elapsed: {TimeSpan.FromMilliseconds(elapsedMs).ToString(@"mm\:ss")}, Remaining: {TimeSpan.FromMilliseconds(_lastDurationMs - elapsedMs).ToString(@"mm\:ss")}, Progress: {(_lastDurationMs > 0 ? elapsedMs / (double)_lastDurationMs * 100 : 0):F1}%");
             OnPlaybackUpdated(estimatedInfo);
             return estimatedInfo;
@@ -145,7 +141,7 @@ public sealed class SpotifyPlaybackService
                     _isPlaying = false;
                     _pauseDetected = true;
                     _pauseCount = 0;
-                    
+
                     var pausedInfo = new PlaybackInfo(
                         TrackName: "Paused",
                         ArtistName: "Paused",
@@ -156,7 +152,7 @@ public sealed class SpotifyPlaybackService
                         IsPlaying: false,
                         TrackId: result.Id
                     );
-                    
+
                     OnPlaybackUpdated(pausedInfo);
                     return pausedInfo;
                 }
@@ -168,7 +164,7 @@ public sealed class SpotifyPlaybackService
                         Debug.WriteLine("Progress stalled (pause detected), forcing API sync and stopping estimation.");
                         _isPlaying = false;
                         _pauseDetected = true;
-                        
+
                         var stalledInfo = new PlaybackInfo(
                             TrackName: "Paused",
                             ArtistName: "Paused",
@@ -179,7 +175,7 @@ public sealed class SpotifyPlaybackService
                             IsPlaying: false,
                             TrackId: result.Id
                         );
-                        
+
                         OnPlaybackUpdated(stalledInfo);
                         return stalledInfo;
                     }
@@ -199,7 +195,7 @@ public sealed class SpotifyPlaybackService
                 if (wasPaused && _isPlaying && !_isResuming)
                 {
                     _isResuming = true;
-                    
+
                     var resumingInfo = new PlaybackInfo(
                         TrackName: "Resuming Playback...",
                         ArtistName: "Resuming Playback...",
@@ -210,7 +206,7 @@ public sealed class SpotifyPlaybackService
                         IsPlaying: true,
                         TrackId: result.Id
                     );
-                    
+
                     OnPlaybackUpdated(resumingInfo);
                     return resumingInfo;
                 }
@@ -239,10 +235,10 @@ public sealed class SpotifyPlaybackService
                     {
                         _isResuming = false; // Reset on first successful API call
                     }
-                    
+
                     Debug.WriteLine($"Synced - Track: {_lastTrackName}, Artist: {_lastArtistName}, Album: {_lastAlbumName}, Cover URL: {_lastCoverUrl}");
                     Debug.WriteLine($"Elapsed: {TimeSpan.FromMilliseconds(_lastProgressMs).ToString(@"mm\:ss")}, Remaining: {TimeSpan.FromMilliseconds(_lastDurationMs - _lastProgressMs).ToString(@"mm\:ss")}, Progress: {(_lastDurationMs > 0 ? _lastProgressMs / (double)_lastDurationMs * 100 : 0):F1}%");
-                    
+
                     OnPlaybackUpdated(playingInfo);
                     return playingInfo;
                 }
@@ -268,7 +264,7 @@ public sealed class SpotifyPlaybackService
                         IsPlaying: false,
                         TrackId: null
                     );
-                    
+
                     OnPlaybackUpdated(trackEndedInfo);
                     return trackEndedInfo;
                 }
@@ -280,7 +276,7 @@ public sealed class SpotifyPlaybackService
                     _lastArtistName = null;
                     _lastAlbumName = null;
                     _lastCoverUrl = null;
-                    
+
                     var noTrackInfo = new PlaybackInfo(
                         TrackName: "No track playing",
                         ArtistName: "No track playing",
@@ -291,7 +287,7 @@ public sealed class SpotifyPlaybackService
                         IsPlaying: false,
                         TrackId: null
                     );
-                    
+
                     OnPlaybackUpdated(noTrackInfo);
                     return noTrackInfo;
                 }
@@ -320,7 +316,7 @@ public sealed class SpotifyPlaybackService
     {
         int attempts = 0;
         TimeSpan delay = TimeSpan.FromSeconds(1);
-        const int maxDelaySeconds = 10;
+        const int MaxDelaySeconds = 10;
         Exception? lastException = null;
 
         while (attempts < maxAttempts)
@@ -333,11 +329,11 @@ public sealed class SpotifyPlaybackService
             {
                 if (apiEx.Response.Headers.TryGetValue("Retry-After", out string? retryAfter) && int.TryParse(retryAfter, out int seconds))
                 {
-                    delay = TimeSpan.FromSeconds(Math.Min(seconds, maxDelaySeconds));
+                    delay = TimeSpan.FromSeconds(Math.Min(seconds, MaxDelaySeconds));
                 }
                 else
                 {
-                    delay = TimeSpan.FromSeconds(Math.Min(5, maxDelaySeconds));
+                    delay = TimeSpan.FromSeconds(Math.Min(5, MaxDelaySeconds));
                 }
 
                 attempts++;
@@ -346,7 +342,7 @@ public sealed class SpotifyPlaybackService
                 {
                     Debug.WriteLine($"Rate limit hit, waiting {delay.TotalSeconds}s. Attempt {attempts}/{maxAttempts}");
                     await Task.Delay(delay);
-                    delay = TimeSpan.FromSeconds(Math.Min(maxDelaySeconds, (int)delay.TotalSeconds * 2 + new Random().Next(1, 3)));
+                    delay = TimeSpan.FromSeconds(Math.Min(MaxDelaySeconds, (int)delay.TotalSeconds * 2 + new Random().Next(1, 3)));
                 }
             }
             catch (APIException apiEx)
@@ -380,13 +376,13 @@ public sealed class SpotifyPlaybackService
     /// <summary>
     /// Raises the PlaybackUpdated event.
     /// </summary>
-    private void OnPlaybackUpdated(PlaybackInfo info) => 
+    private void OnPlaybackUpdated(PlaybackInfo info) =>
         PlaybackUpdated?.Invoke(this, info);
 
     /// <summary>
     /// Raises the PlaybackError event.
     /// </summary>
-    private void OnPlaybackError(string errorMessage) => 
+    private void OnPlaybackError(string errorMessage) =>
         PlaybackError?.Invoke(this, errorMessage);
 
     /// <summary>
@@ -415,11 +411,11 @@ public sealed class SpotifyPlaybackService
 /// </summary>
 public sealed record PlaybackInfo(
     string? TrackName,
-    string? ArtistName, 
-    string? AlbumName, 
-    string? CoverUrl, 
-    int ProgressMs, 
-    int DurationMs, 
-    bool IsPlaying, 
+    string? ArtistName,
+    string? AlbumName,
+    string? CoverUrl,
+    int ProgressMs,
+    int DurationMs,
+    bool IsPlaying,
     string? TrackId
 );

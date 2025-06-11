@@ -1,9 +1,5 @@
-using System;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Threading.Tasks;
 using InfoPanel.Spotify.Models;
 using IniParser;
 using IniParser.Model;
@@ -25,12 +21,12 @@ public sealed class SpotifyAuthService
     private string? _refreshToken;
     private string? _accessToken;
     private DateTime _tokenExpiration;
-    private bool _refreshFailed; 
+    private bool _refreshFailed;
     private bool _forceInvalidGrant;
 
     // Constants for token management
     public const int TokenExpirationBufferSeconds = 60;
-    public const int TokenRefreshCheckIntervalSeconds = 60; 
+    public const int TokenRefreshCheckIntervalSeconds = 60;
     public const int TokenRefreshMaxRetries = 3;
     public const int TokenRefreshRetryDelaySeconds = 5;
     public const int TokenNearExpiryThresholdSeconds = 300; // 5 minutes
@@ -79,23 +75,23 @@ public sealed class SpotifyAuthService
             Debug.WriteLine("No spotifyrefresh.tmp found; will create on first authentication via button.");
             return false;
         }
-        
+
         try
         {
             Debug.WriteLine($"Token file last modified UTC: {File.GetLastWriteTimeUtc(_tokenFilePath).ToString("o")}");
             using var fileStream = new FileStream(_tokenFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var reader = new StreamReader(fileStream);
-            
+
             string fileContent = reader.ReadToEnd();
             Debug.WriteLine($"Raw .tmp content: {fileContent}");
-            
+
             var parser = new FileIniDataParser();
             var tokenConfig = parser.Parser.Parse(fileContent);
-            
+
             _refreshToken = tokenConfig["Spotify Tokens"]["RefreshToken"];
             _accessToken = tokenConfig["Spotify Tokens"]["AccessToken"];
             string expirationStr = tokenConfig["Spotify Tokens"]["TokenExpiration"];
-            
+
             if (!DateTime.TryParse(expirationStr, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime expiration))
             {
                 Debug.WriteLine($"Invalid TokenExpiration format in .tmp: '{expirationStr}'; resetting to MinValue.");
@@ -112,7 +108,7 @@ public sealed class SpotifyAuthService
                 ResetTokens();
                 return false;
             }
-            
+
             Debug.WriteLine($"Loaded tokens from spotifyrefresh.tmp - Refresh Token: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Access Token: {(string.IsNullOrEmpty(_accessToken) ? "null" : "set")}, Expiration UTC: {_tokenExpiration.ToString("o")}, Kind: {_tokenExpiration.Kind}");
             return true;
         }
@@ -303,7 +299,11 @@ public sealed class SpotifyAuthService
     {
         if (_refreshFailed || _refreshToken == null || _clientID == null)
         {
-            if (!_refreshFailed) Debug.WriteLine("Refresh token or ClientID missing; cannot refresh.");
+            if (!_refreshFailed)
+            {
+                Debug.WriteLine("Refresh token or ClientID missing; cannot refresh.");
+            }
+
             OnAuthStateChanged(AuthState.NotAuthenticated);
             return false;
         }
@@ -385,12 +385,12 @@ public sealed class SpotifyAuthService
     /// <summary>
     /// Raises the AuthStateChanged event.
     /// </summary>
-    private void OnAuthStateChanged(AuthState state) => 
+    private void OnAuthStateChanged(AuthState state) =>
         AuthStateChanged?.Invoke(this, state);
 
     /// <summary>
     /// Raises the ClientInitialized event.
     /// </summary>
-    private void OnClientInitialized(SpotifyClient client) => 
+    private void OnClientInitialized(SpotifyClient client) =>
         ClientInitialized?.Invoke(this, client);
 }

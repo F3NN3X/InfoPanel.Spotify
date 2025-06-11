@@ -1,5 +1,3 @@
-using System;
-
 namespace InfoPanel.Spotify.Models;
 
 /// <summary>

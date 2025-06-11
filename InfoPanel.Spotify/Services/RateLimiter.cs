@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 
 namespace InfoPanel.Spotify.Services;
@@ -33,13 +32,17 @@ public sealed class RateLimiter
 
         _requestTimesMinute.Enqueue(now);
         CleanupExpiredRequests(_requestTimesMinute, _minuteWindow, now);
-        if (_requestTimesMinute.Count > _maxRequestsPerMinute) 
+        if (_requestTimesMinute.Count > _maxRequestsPerMinute)
+        {
             return false;
+        }
 
         _requestTimesSecond.Enqueue(now);
         CleanupExpiredRequests(_requestTimesSecond, _secondWindow, now);
-        if (_requestTimesSecond.Count > _maxRequestsPerSecond) 
+        if (_requestTimesSecond.Count > _maxRequestsPerSecond)
+        {
             return false;
+        }
 
         return true;
     }
