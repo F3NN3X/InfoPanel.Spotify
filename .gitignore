@@ -10,3 +10,6 @@
 
 # Ignore .idea folder (IntelliJ IDEA)
 .idea/
+
+# Ignore VSCode settings directory
+.vscode/
