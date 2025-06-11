@@ -1,13 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-	<PropertyGroup>
-		<TargetFramework>net8.0-windows</TargetFramework>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-		<EnableDynamicLoading>true</EnableDynamicLoading>
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-		<Platforms>x64</Platforms>
-	</PropertyGroup>
+ <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Platforms>x64</Platforms>
+    <!-- Ensure all referenced assemblies are copied to the output directory -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Disable generation of deps.json -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- Disable generation of runtimeconfig.json -->
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <!-- Disable generation of PDB files in Release builds -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <!-- Limit satellite resources to English only -->
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+    <Version>1.1.1</Version>
+    <!-- Customize output path for Release builds -->
+    <OutputPath Condition="'$(Configuration)' == 'Release'">bin\Release\net8.0-windows\InfoPanel.Spotify-v$(Version)\InfoPanel.Spotify</OutputPath>
+    <!-- Prevent appending TargetFramework to OutputPath -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
@@ -22,4 +35,11 @@
 			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
 	</ItemGroup>
+	
+  <ItemGroup>
+    <None Update="PluginInfo.ini">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <TargetPath>PluginInfo.ini</TargetPath>
+    </None>
+  </ItemGroup>	
 </Project>

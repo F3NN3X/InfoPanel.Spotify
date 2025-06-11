@@ -2,6 +2,34 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.1.1] - June 11, 2025
+### Fixed
+- Resolved code issues in sealed classes:
+  - Removed `virtual` keyword from methods in sealed classes (not allowed in C#)
+  - Changed `protected` methods to `private` in sealed classes since they can't be inherited
+- Affected files:
+  - `Services/SpotifyPlaybackService.cs`: Updated event methods `OnPlaybackUpdated` and `OnPlaybackError`
+  - `Services/SpotifyAuthService.cs`: Updated event methods `OnAuthStateChanged` and `OnClientInitialized`
+### Benefits
+- Code now compiles without errors or warnings
+- Improved architectural consistency with C# best practices
+- Better adherence to sealed class semantics
+
+## [1.1.0] - June 11, 2025
+### Changed
+- Completely refactored the codebase to improve maintainability by splitting classes into separate files:
+  - Created `Models/AuthState.cs` to hold the authentication state enum
+  - Created `Services/RateLimiter.cs` for the rate limiting functionality
+  - Created `Services/SpotifyAuthService.cs` to handle authentication and token management
+  - Created `Services/SpotifyPlaybackService.cs` to manage playback information and updates
+  - Reduced the size of the main `InfoPanel.Spotify.cs` file by delegating responsibilities to specialized classes
+### Benefits
+- Improved code organization and readability with single-responsibility classes
+- Better maintainability with isolated components
+- Easier navigation and troubleshooting
+- Enhanced collaboration potential with clearly defined class boundaries
+- More effective version control with smaller, focused files
+
 # Changelog
 
 ## [1.0.91] - June 10 2025
