@@ -225,7 +225,7 @@ public sealed class SpotifyAuthService
             {
                 CodeChallengeMethod = "S256",
                 CodeChallenge = challenge,
-                Scope = ["UserReadPlaybackState", "UserReadCurrentlyPlaying"],
+                Scope = ["user-read-playback-state", "user-read-currently-playing"],
             };
             var uri = loginRequest.ToUri();
 
