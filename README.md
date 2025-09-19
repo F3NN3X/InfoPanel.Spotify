@@ -149,6 +149,7 @@ Found a bug or have a feature idea? Open an [issue](https://github.com/F3NN3X/In
   MaxDisplayLength=20
   NoTrackMessage=No music playing
   PausedMessage=
+  NoTrackArtistMessage=-
   ForceInvalidGrant=false
   ```
 
@@ -165,6 +166,11 @@ Found a bug or have a feature idea? Open an [issue](https://github.com/F3NN3X/In
   - **Empty (default)**: Keep showing actual track information when paused
   - **Custom text**: Show custom message instead (e.g., `"⏸ Paused"`, `"Music paused"`)
 
+- **`NoTrackArtistMessage`** *(optional, default: "-")*: Custom message for the artist field when no track is playing or when using a custom paused message.
+  - **Default "-"**: Shows a dash in artist field
+  - **Custom text**: Show custom text in artist field (e.g., `"No artist"`, `""`, `"Idle"`)
+  - **Empty**: Leave artist field blank (may display as "0" in some cases)
+
 - **`ForceInvalidGrant`** *(debug only)*: Available only in debug builds for testing token refresh functionality.
 
 ### Configuration Examples
@@ -176,6 +182,7 @@ ClientID=abc123xyz
 MaxDisplayLength=25
 NoTrackMessage=No music playing
 PausedMessage=
+NoTrackArtistMessage=-
 ```
 
 **Custom messages**:
@@ -185,6 +192,7 @@ ClientID=abc123xyz
 MaxDisplayLength=30
 NoTrackMessage=♪ Spotify idle
 PausedMessage=⏸ Music paused
+NoTrackArtistMessage=No artist
 ```
 
 **Minimal setup**:

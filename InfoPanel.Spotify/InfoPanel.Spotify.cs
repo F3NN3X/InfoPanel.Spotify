@@ -61,6 +61,7 @@ public sealed class SpotifyPlugin : BasePlugin
     private bool _forceInvalidGrant = false; // Explicitly initialize to avoid CS0649 warning
     private string _noTrackMessage = "No music playing"; // Custom message when no track is playing
     private string _pausedMessage = ""; // Custom message when paused (empty = keep track info)
+    private string _noTrackArtistMessage = "-"; // Custom message for artist field when no track/paused with custom message (default: "-")
 
     // Background refresh task (non-nullable, always initialized)
     private CancellationTokenSource _refreshCancellationTokenSource;
@@ -174,9 +175,10 @@ public sealed class SpotifyPlugin : BasePlugin
             config["Spotify Plugin"]["MaxDisplayLength"] = "20";
             config["Spotify Plugin"]["NoTrackMessage"] = "No music playing";
             config["Spotify Plugin"]["PausedMessage"] = "";
+            config["Spotify Plugin"]["NoTrackArtistMessage"] = "-";
             config["Spotify Plugin"]["ForceInvalidGrant"] = "false";
             parser.WriteFile(_configFilePath, config);
-            Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, NoTrackMessage, PausedMessage, and ForceInvalidGrant.");
+            Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, NoTrackMessage, PausedMessage, NoTrackArtistMessage, and ForceInvalidGrant.");
         }
         else
         {
@@ -206,6 +208,7 @@ public sealed class SpotifyPlugin : BasePlugin
                 // Load custom messages with fallback defaults
                 _noTrackMessage = config["Spotify Plugin"]["NoTrackMessage"] ?? "No music playing";
                 _pausedMessage = config["Spotify Plugin"]["PausedMessage"] ?? "";
+                _noTrackArtistMessage = config["Spotify Plugin"]["NoTrackArtistMessage"] ?? "-";
 
                 // Add missing message settings to config if they don't exist
                 bool configUpdated = false;
@@ -217,6 +220,11 @@ public sealed class SpotifyPlugin : BasePlugin
                 if (!config["Spotify Plugin"].ContainsKey("PausedMessage"))
                 {
                     config["Spotify Plugin"]["PausedMessage"] = _pausedMessage;
+                    configUpdated = true;
+                }
+                if (!config["Spotify Plugin"].ContainsKey("NoTrackArtistMessage"))
+                {
+                    config["Spotify Plugin"]["NoTrackArtistMessage"] = _noTrackArtistMessage;
                     configUpdated = true;
                 }
                 if (configUpdated)
@@ -233,7 +241,7 @@ public sealed class SpotifyPlugin : BasePlugin
                     _forceInvalidGrant = forceInvalid;
                 }
 #endif
-                Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', ForceInvalidGrant: {_forceInvalidGrant}");
+                Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', NoTrackArtistMessage: '{_noTrackArtistMessage}', ForceInvalidGrant: {_forceInvalidGrant}");
             }
             catch (Exception ex)
             {
@@ -403,13 +411,13 @@ public sealed class SpotifyPlugin : BasePlugin
     private void OnPlaybackUpdated(object? sender, PlaybackInfo info)
     {
         string trackName, artistName, albumName;
-        
+
         if (!info.HasTrack)
         {
             // No track loaded in Spotify - use custom message
             trackName = _noTrackMessage;
-            artistName = "";
-            albumName = "";
+            artistName = _noTrackArtistMessage;
+            albumName = "-";
             _elapsedTime.Value = "00:00";
             _remainingTime.Value = "00:00";
             _trackProgress.Value = 0.0F;
@@ -419,8 +427,8 @@ public sealed class SpotifyPlugin : BasePlugin
         {
             // Track is paused and user wants custom paused message
             trackName = _pausedMessage;
-            artistName = "";
-            albumName = "";
+            artistName = _noTrackArtistMessage;
+            albumName = "-";
             _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
@@ -459,8 +467,8 @@ public sealed class SpotifyPlugin : BasePlugin
     private void SetDefaultValues(string message)
     {
         _currentTrack.Value = message;
-        _artist.Value = message;
-        _album.Value = message;
+        _artist.Value = _noTrackArtistMessage;
+        _album.Value = "-";
         _elapsedTime.Value = "00:00";
         _remainingTime.Value = "00:00";
         _trackProgress.Value = 0.0F;
