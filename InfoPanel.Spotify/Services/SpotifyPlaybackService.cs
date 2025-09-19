@@ -30,6 +30,7 @@ public sealed class SpotifyPlaybackService
     private string? _lastArtistName;
     private string? _lastAlbumName;
     private string? _lastCoverUrl;
+    private PlaybackInfo? _lastKnownTrack;
 
     // Constants for timing and detection thresholds
     private const int ProgressToleranceMs = 1500;
@@ -96,7 +97,8 @@ public sealed class SpotifyPlaybackService
                     ProgressMs: _lastDurationMs,
                     DurationMs: _lastDurationMs,
                     IsPlaying: false,
-                    TrackId: _lastTrackId
+                    TrackId: _lastTrackId,
+                    HasTrack: true
                 );
 
                 OnPlaybackUpdated(trackEndedInfo);
@@ -111,7 +113,8 @@ public sealed class SpotifyPlaybackService
                 ProgressMs: elapsedMs,
                 DurationMs: _lastDurationMs,
                 IsPlaying: _isPlaying,
-                TrackId: _lastTrackId
+                TrackId: _lastTrackId,
+                HasTrack: true
             );
 
             Debug.WriteLine($"Estimated - Elapsed: {TimeSpan.FromMilliseconds(elapsedMs).ToString(@"mm\:ss")}, Remaining: {TimeSpan.FromMilliseconds(_lastDurationMs - elapsedMs).ToString(@"mm\:ss")}, Progress: {(_lastDurationMs > 0 ? elapsedMs / (double)_lastDurationMs * 100 : 0):F1}%");
@@ -143,15 +146,19 @@ public sealed class SpotifyPlaybackService
                     _pauseCount = 0;
 
                     var pausedInfo = new PlaybackInfo(
-                        TrackName: "Paused",
-                        ArtistName: "Paused",
-                        AlbumName: "Paused",
+                        TrackName: _lastTrackName,
+                        ArtistName: _lastArtistName,
+                        AlbumName: _lastAlbumName,
                         CoverUrl: _lastCoverUrl,
                         ProgressMs: playback.ProgressMs,
                         DurationMs: result.DurationMs,
                         IsPlaying: false,
-                        TrackId: result.Id
+                        TrackId: result.Id,
+                        HasTrack: true
                     );
+
+                    // Store as last known track when paused
+                    _lastKnownTrack = pausedInfo;
 
                     OnPlaybackUpdated(pausedInfo);
                     return pausedInfo;
@@ -166,15 +173,19 @@ public sealed class SpotifyPlaybackService
                         _pauseDetected = true;
 
                         var stalledInfo = new PlaybackInfo(
-                            TrackName: "Paused",
-                            ArtistName: "Paused",
-                            AlbumName: "Paused",
+                            TrackName: _lastTrackName,
+                            ArtistName: _lastArtistName,
+                            AlbumName: _lastAlbumName,
                             CoverUrl: _lastCoverUrl,
                             ProgressMs: playback.ProgressMs,
                             DurationMs: result.DurationMs,
                             IsPlaying: false,
-                            TrackId: result.Id
+                            TrackId: result.Id,
+                            HasTrack: true
                         );
+
+                        // Store as last known track when paused
+                        _lastKnownTrack = stalledInfo;
 
                         OnPlaybackUpdated(stalledInfo);
                         return stalledInfo;
@@ -204,7 +215,8 @@ public sealed class SpotifyPlaybackService
                         ProgressMs: playback.ProgressMs,
                         DurationMs: result.DurationMs,
                         IsPlaying: true,
-                        TrackId: result.Id
+                        TrackId: result.Id,
+                        HasTrack: true
                     );
 
                     OnPlaybackUpdated(resumingInfo);
@@ -228,8 +240,12 @@ public sealed class SpotifyPlaybackService
                         ProgressMs: _lastProgressMs,
                         DurationMs: _lastDurationMs,
                         IsPlaying: _isPlaying,
-                        TrackId: _lastTrackId
+                        TrackId: _lastTrackId,
+                        HasTrack: true
                     );
+
+                    // Store as last known track when playing or paused
+                    _lastKnownTrack = playingInfo;
 
                     if (_isResuming)
                     {
@@ -262,7 +278,8 @@ public sealed class SpotifyPlaybackService
                         ProgressMs: _lastDurationMs,
                         DurationMs: _lastDurationMs,
                         IsPlaying: false,
-                        TrackId: null
+                        TrackId: null,
+                        HasTrack: true
                     );
 
                     OnPlaybackUpdated(trackEndedInfo);
@@ -285,7 +302,8 @@ public sealed class SpotifyPlaybackService
                         ProgressMs: 0,
                         DurationMs: 0,
                         IsPlaying: false,
-                        TrackId: null
+                        TrackId: null,
+                        HasTrack: false
                     );
 
                     OnPlaybackUpdated(noTrackInfo);
@@ -417,5 +435,6 @@ public sealed record PlaybackInfo(
     int ProgressMs,
     int DurationMs,
     bool IsPlaying,
-    string? TrackId
+    string? TrackId,
+    bool HasTrack
 );

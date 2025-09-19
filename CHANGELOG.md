@@ -2,6 +2,35 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.2.0] - September 19, 2025
+### Added
+- **Keep song information when paused**: Track name, artist, and album are now preserved when playback is paused instead of showing "Paused"
+- **Custom messages via INI configuration**: Added two new configuration options for customizing display messages:
+  - `NoTrackMessage`: Custom message when no track is loaded in Spotify (default: "No music playing")
+  - `PausedMessage`: Custom message when track is paused (empty = keep track info, or set custom message like "⏸ Paused")
+
+### Changed
+- Enhanced `PlaybackInfo` record with `HasTrack` field to distinguish between paused tracks vs. no track loaded
+- Updated `SpotifyPlaybackService` to preserve actual track information during pause states
+- Modified UI update logic in `OnPlaybackUpdated()` to handle different playback states appropriately
+- Improved configuration file handling to include new message settings with backward compatibility
+
+### Technical Details
+- Added `_lastKnownTrack` tracking in `SpotifyPlaybackService` to maintain track information across state changes
+- Updated pause detection logic to preserve track metadata when `IsPlaying` is false but `HasTrack` is true
+- Enhanced INI file loading with automatic addition of missing configuration keys
+- Maintained backward compatibility - existing installations will get default values automatically
+
+### Configuration Example
+```ini
+[Spotify Plugin]
+ClientID=your-client-id-here
+MaxDisplayLength=20
+NoTrackMessage=♪ Spotify idle
+PausedMessage=
+ForceInvalidGrant=false
+```
+
 ## [1.1.1] - June 11, 2025
 ### Fixed
 - Resolved code issues in sealed classes:

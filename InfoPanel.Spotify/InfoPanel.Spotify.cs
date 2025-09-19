@@ -8,9 +8,12 @@ using IniParser.Model;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.1.1
+ * Version: 1.2.0
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
+ *   - v1.2.0 (September 19, 2025): Added pause track preservation and custom messages.
+ *     - **Changes**: Keep song info when paused, added NoTrackMessage/PausedMessage INI settings, enhanced PlaybackInfo with HasTrack field.
+ *     - **Purpose**: Improves user experience by preserving track info during pause and allowing customization of display messages.
  *   - v1.1.1 (June 11, 2025): Fixed code issues in sealed classes.
  *     - **Changes**: Removed `virtual` keyword from methods in sealed classes and changed `protected` methods to `private` in SpotifyPlaybackService and SpotifyAuthService.
  *     - **Purpose**: Resolves compiler errors and warnings, improves architectural consistency with C# best practices.
@@ -56,6 +59,8 @@ public sealed class SpotifyPlugin : BasePlugin
     private string? _clientID;
     private int _maxDisplayLength = 20;
     private bool _forceInvalidGrant = false; // Explicitly initialize to avoid CS0649 warning
+    private string _noTrackMessage = "No music playing"; // Custom message when no track is playing
+    private string _pausedMessage = ""; // Custom message when paused (empty = keep track info)
 
     // Background refresh task (non-nullable, always initialized)
     private CancellationTokenSource _refreshCancellationTokenSource;
@@ -65,7 +70,7 @@ public sealed class SpotifyPlugin : BasePlugin
 
     // Constructor: Initializes the plugin with metadata
     public SpotifyPlugin()
-        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.1.1")
+        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.0")
     {
         _refreshCancellationTokenSource = new CancellationTokenSource();
     }
@@ -167,9 +172,11 @@ public sealed class SpotifyPlugin : BasePlugin
             config = new IniData();
             config["Spotify Plugin"]["ClientID"] = "<your-spotify-client-id>";
             config["Spotify Plugin"]["MaxDisplayLength"] = "20";
+            config["Spotify Plugin"]["NoTrackMessage"] = "No music playing";
+            config["Spotify Plugin"]["PausedMessage"] = "";
             config["Spotify Plugin"]["ForceInvalidGrant"] = "false";
             parser.WriteFile(_configFilePath, config);
-            Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, and ForceInvalidGrant.");
+            Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, NoTrackMessage, PausedMessage, and ForceInvalidGrant.");
         }
         else
         {
@@ -196,6 +203,28 @@ public sealed class SpotifyPlugin : BasePlugin
                     _maxDisplayLength = maxLength;
                 }
 
+                // Load custom messages with fallback defaults
+                _noTrackMessage = config["Spotify Plugin"]["NoTrackMessage"] ?? "No music playing";
+                _pausedMessage = config["Spotify Plugin"]["PausedMessage"] ?? "";
+
+                // Add missing message settings to config if they don't exist
+                bool configUpdated = false;
+                if (!config["Spotify Plugin"].ContainsKey("NoTrackMessage"))
+                {
+                    config["Spotify Plugin"]["NoTrackMessage"] = _noTrackMessage;
+                    configUpdated = true;
+                }
+                if (!config["Spotify Plugin"].ContainsKey("PausedMessage"))
+                {
+                    config["Spotify Plugin"]["PausedMessage"] = _pausedMessage;
+                    configUpdated = true;
+                }
+                if (configUpdated)
+                {
+                    parser.WriteFile(_configFilePath, config);
+                    Debug.WriteLine("Added missing message settings to config.");
+                }
+
 #if DEBUG
                 // Load ForceInvalidGrant from .ini only in debug builds
                 if (config["Spotify Plugin"].ContainsKey("ForceInvalidGrant") &&
@@ -204,7 +233,7 @@ public sealed class SpotifyPlugin : BasePlugin
                     _forceInvalidGrant = forceInvalid;
                 }
 #endif
-                Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, ForceInvalidGrant: {_forceInvalidGrant}");
+                Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', ForceInvalidGrant: {_forceInvalidGrant}");
             }
             catch (Exception ex)
             {
@@ -373,13 +402,45 @@ public sealed class SpotifyPlugin : BasePlugin
     // Handle playback updates
     private void OnPlaybackUpdated(object? sender, PlaybackInfo info)
     {
-        _currentTrack.Value = CutString(info.TrackName ?? "Unknown");
-        _artist.Value = CutString(info.ArtistName ?? "Unknown");
-        _album.Value = CutString(info.AlbumName ?? "Unknown");
-        _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
-        _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
-        _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
-        _coverUrl.Value = info.CoverUrl ?? string.Empty;
+        string trackName, artistName, albumName;
+        
+        if (!info.HasTrack)
+        {
+            // No track loaded in Spotify - use custom message
+            trackName = _noTrackMessage;
+            artistName = "";
+            albumName = "";
+            _elapsedTime.Value = "00:00";
+            _remainingTime.Value = "00:00";
+            _trackProgress.Value = 0.0F;
+            _coverUrl.Value = string.Empty;
+        }
+        else if (!info.IsPlaying && !string.IsNullOrEmpty(_pausedMessage))
+        {
+            // Track is paused and user wants custom paused message
+            trackName = _pausedMessage;
+            artistName = "";
+            albumName = "";
+            _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
+            _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
+            _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
+            _coverUrl.Value = info.CoverUrl ?? string.Empty;
+        }
+        else
+        {
+            // Track is playing or paused (and user wants to keep track info)
+            trackName = CutString(info.TrackName ?? "Unknown");
+            artistName = CutString(info.ArtistName ?? "Unknown");
+            albumName = CutString(info.AlbumName ?? "Unknown");
+            _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
+            _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
+            _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
+            _coverUrl.Value = info.CoverUrl ?? string.Empty;
+        }
+
+        _currentTrack.Value = trackName;
+        _artist.Value = artistName;
+        _album.Value = albumName;
     }
 
     // Handle playback errors
