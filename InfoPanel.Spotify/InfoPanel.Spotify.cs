@@ -8,9 +8,12 @@ using IniParser.Model;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.2.0
+ * Version: 1.2.1
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
+ *   - v1.2.1 (September 19, 2025): Added playback state sensor for real-time state monitoring.
+ *     - **Changes**: Added PluginSensor for playback state (0=Not Playing, 1=Paused, 2=Playing), integrated state updates in OnPlaybackUpdated method.
+ *     - **Purpose**: Enables InfoPanel automation and monitoring based on Spotify playback state, provides precise state differentiation for external integrations.
  *   - v1.2.0 (September 19, 2025): Added pause track preservation and custom messages.
  *     - **Changes**: Keep song info when paused, added NoTrackMessage/PausedMessage INI settings, enhanced PlaybackInfo with HasTrack field.
  *     - **Purpose**: Improves user experience by preserving track info during pause and allowing customization of display messages.
@@ -47,6 +50,7 @@ public sealed class SpotifyPlugin : BasePlugin
     // UI display elements (PluginSensor) for InfoPanel
     private readonly PluginSensor _trackProgress = new("track-progress", "Track Progress (%)", 0.0F);
     private readonly PluginSensor _authState = new("auth-state", "Auth State", (float)AuthState.NotAuthenticated); // 0=NotAuth, 1=Authenticating, 2=Authenticated, 3=Error
+    private readonly PluginSensor _playbackState = new("playback-state", "Playback State", 0.0F); // 0=Not Playing, 1=Paused, 2=Playing
 
     // Services for Spotify interaction
     private SpotifyAuthService? _authService;
@@ -71,7 +75,7 @@ public sealed class SpotifyPlugin : BasePlugin
 
     // Constructor: Initializes the plugin with metadata
     public SpotifyPlugin()
-        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.0")
+        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.1")
     {
         _refreshCancellationTokenSource = new CancellationTokenSource();
     }
@@ -255,7 +259,7 @@ public sealed class SpotifyPlugin : BasePlugin
     public override void Load(List<IPluginContainer> containers)
     {
         var container = new PluginContainer("Spotify");
-        container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _authState, _coverUrl]);
+        container.Entries.AddRange([_currentTrack, _artist, _album, _elapsedTime, _remainingTime, _trackProgress, _authState, _playbackState, _coverUrl]);
         containers.Add(container);
     }
 
@@ -422,6 +426,7 @@ public sealed class SpotifyPlugin : BasePlugin
             _remainingTime.Value = "00:00";
             _trackProgress.Value = 0.0F;
             _coverUrl.Value = string.Empty;
+            _playbackState.Value = 0.0F; // Not playing
         }
         else if (!info.IsPlaying && !string.IsNullOrEmpty(_pausedMessage))
         {
@@ -433,6 +438,7 @@ public sealed class SpotifyPlugin : BasePlugin
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
             _coverUrl.Value = info.CoverUrl ?? string.Empty;
+            _playbackState.Value = 1.0F; // Paused
         }
         else
         {
@@ -444,6 +450,7 @@ public sealed class SpotifyPlugin : BasePlugin
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
             _coverUrl.Value = info.CoverUrl ?? string.Empty;
+            _playbackState.Value = info.IsPlaying ? 2.0F : 1.0F; // Playing or Paused
         }
 
         _currentTrack.Value = trackName;
@@ -473,6 +480,7 @@ public sealed class SpotifyPlugin : BasePlugin
         _remainingTime.Value = "00:00";
         _trackProgress.Value = 0.0F;
         _coverUrl.Value = string.Empty;
+        _playbackState.Value = 0.0F; // Not playing
         Debug.WriteLine($"Set default values: {message}");
     }
 }

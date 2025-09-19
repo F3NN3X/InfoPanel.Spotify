@@ -2,6 +2,25 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.2.1] - September 19, 2025
+### Added
+- **Playback State Sensor**: New `PluginSensor` that provides real-time playback state information
+  - Value `0.0`: Not playing (no track loaded or error state)
+  - Value `1.0`: Paused (track loaded but playback paused)
+  - Value `2.0`: Playing (track actively playing)
+- **Enhanced InfoPanel Integration**: Playback state sensor is exposed to InfoPanel for automation and monitoring purposes
+
+### Technical Details
+- Added `_playbackState` sensor with ID "playback-state" and display name "Playback State"
+- Integrated state updates in `OnPlaybackUpdated()` method to reflect current playback conditions
+- Added state handling in error scenarios through `SetDefaultValues()` method
+- Sensor updates automatically every second matching the plugin's update interval
+
+### Benefits
+- Enables InfoPanel automation based on Spotify playback state
+- Provides precise state differentiation between not playing, paused, and actively playing
+- Real-time updates ensure accurate state representation for external integrations
+
 ## [1.2.0] - September 19, 2025
 ### Added
 - **Keep song information when paused**: Track name, artist, and album are now preserved when playback is paused instead of showing "Paused"
