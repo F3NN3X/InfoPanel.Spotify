@@ -1,9 +1,11 @@
 # SpotifyPlugin for InfoPanel
 
-A plugin for InfoPanel to display real-time Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time.
+A plugin for InfoPanel to display real-time Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Features smart pause handling that preserves track information and customizable display messages.
 
 ## Features
 - Displays current track details: title, artist, album, cover art URL, elapsed/remaining time, and progress percentage.
+- **Preserves track information when paused**: Song name, artist, and album remain visible during pause (v1.2.0+).
+- **Customizable display messages**: Configure custom messages for "no track playing" and paused states via `.ini` file (v1.2.0+).
 - Configurable title truncation via `MaxDisplayLength` in `.ini` file (default: 20 characters).
 - Robust pause, resume, and track end detection with visual indicators.
 - Optimized API usage with caching, rate limiting (180 req/min, 10 req/s), and automatic background token refresh.
@@ -13,7 +15,8 @@ A plugin for InfoPanel to display real-time Spotify track information, including
 Follow these steps to get the SpotifyPlugin working with InfoPanel:
 
 1. **Download the Plugin**:
-   - Download the latest release ZIP file (`SpotifyPlugin-vX.X.X.zip`) from the [GitHub Releases page](https://github.com/F3NN3X/InfoPanel.Spotify/releases).
+   - Download the latest release ZIP file (`SpotifyPlugin-v1.2.0.zip` or newer) from the [GitHub Releases page](https://github.com/F3NN3X/InfoPanel.Spotify/releases).
+   - **v1.2.0+** includes track preservation during pause and customizable messages.
 
 2. **Import the Plugin into InfoPanel**:
    - Open the InfoPanel app.
@@ -144,3 +147,56 @@ Found a bug or have a feature idea? Open an [issue](https://github.com/F3NN3X/In
   [Spotify Plugin]
   ClientID=<your-spotify-client-id>
   MaxDisplayLength=20
+  NoTrackMessage=No music playing
+  PausedMessage=
+  NoTrackArtistMessage=-
+  ForceInvalidGrant=false
+  ```
+
+### Configuration Options
+
+- **`ClientID`** *(required)*: Your Spotify Developer App Client ID. Get this from the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+
+- **`MaxDisplayLength`** *(optional, default: 20)*: Maximum number of characters to display for track names, artist names, and album names. Longer text will be truncated with "...".
+
+- **`NoTrackMessage`** *(optional, default: "No music playing")*: Custom message displayed when no track is loaded in Spotify. 
+  - Examples: `"♪ Spotify idle"`, `"Ready to play music"`, `""`
+
+- **`PausedMessage`** *(optional, default: "")*: Custom message displayed when playback is paused.
+  - **Empty (default)**: Keep showing actual track information when paused
+  - **Custom text**: Show custom message instead (e.g., `"⏸ Paused"`, `"Music paused"`)
+
+- **`NoTrackArtistMessage`** *(optional, default: "-")*: Custom message for the artist field when no track is playing or when using a custom paused message.
+  - **Default "-"**: Shows a dash in artist field
+  - **Custom text**: Show custom text in artist field (e.g., `"No artist"`, `""`, `"Idle"`)
+  - **Empty**: Leave artist field blank (may display as "0" in some cases)
+
+- **`ForceInvalidGrant`** *(debug only)*: Available only in debug builds for testing token refresh functionality.
+
+### Configuration Examples
+
+**Default behavior** (keep track info when paused):
+```ini
+[Spotify Plugin]
+ClientID=abc123xyz
+MaxDisplayLength=25
+NoTrackMessage=No music playing
+PausedMessage=
+NoTrackArtistMessage=-
+```
+
+**Custom messages**:
+```ini
+[Spotify Plugin] 
+ClientID=abc123xyz
+MaxDisplayLength=30
+NoTrackMessage=♪ Spotify idle
+PausedMessage=⏸ Music paused
+NoTrackArtistMessage=No artist
+```
+
+**Minimal setup**:
+```ini
+[Spotify Plugin]
+ClientID=abc123xyz
+```

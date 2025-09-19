@@ -2,6 +2,54 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.2.1] - September 19, 2025
+### Added
+- **Playback State Sensor**: New `PluginSensor` that provides real-time playback state information
+  - Value `0.0`: Not playing (no track loaded or error state)
+  - Value `1.0`: Paused (track loaded but playback paused)
+  - Value `2.0`: Playing (track actively playing)
+- **Enhanced InfoPanel Integration**: Playback state sensor is exposed to InfoPanel for automation and monitoring purposes
+
+### Technical Details
+- Added `_playbackState` sensor with ID "playback-state" and display name "Playback State"
+- Integrated state updates in `OnPlaybackUpdated()` method to reflect current playback conditions
+- Added state handling in error scenarios through `SetDefaultValues()` method
+- Sensor updates automatically every second matching the plugin's update interval
+
+### Benefits
+- Enables InfoPanel automation based on Spotify playback state
+- Provides precise state differentiation between not playing, paused, and actively playing
+- Real-time updates ensure accurate state representation for external integrations
+
+## [1.2.0] - September 19, 2025
+### Added
+- **Keep song information when paused**: Track name, artist, and album are now preserved when playback is paused instead of showing "Paused"
+- **Custom messages via INI configuration**: Added two new configuration options for customizing display messages:
+  - `NoTrackMessage`: Custom message when no track is loaded in Spotify (default: "No music playing")
+  - `PausedMessage`: Custom message when track is paused (empty = keep track info, or set custom message like "⏸ Paused")
+
+### Changed
+- Enhanced `PlaybackInfo` record with `HasTrack` field to distinguish between paused tracks vs. no track loaded
+- Updated `SpotifyPlaybackService` to preserve actual track information during pause states
+- Modified UI update logic in `OnPlaybackUpdated()` to handle different playback states appropriately
+- Improved configuration file handling to include new message settings with backward compatibility
+
+### Technical Details
+- Added `_lastKnownTrack` tracking in `SpotifyPlaybackService` to maintain track information across state changes
+- Updated pause detection logic to preserve track metadata when `IsPlaying` is false but `HasTrack` is true
+- Enhanced INI file loading with automatic addition of missing configuration keys
+- Maintained backward compatibility - existing installations will get default values automatically
+
+### Configuration Example
+```ini
+[Spotify Plugin]
+ClientID=your-client-id-here
+MaxDisplayLength=20
+NoTrackMessage=♪ Spotify idle
+PausedMessage=
+ForceInvalidGrant=false
+```
+
 ## [1.1.1] - June 11, 2025
 ### Fixed
 - Resolved code issues in sealed classes:
