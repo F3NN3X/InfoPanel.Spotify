@@ -1,20 +1,11 @@
 {
   "name": "InfoPanel.Spotify",
   "version": "1.2.1",
-  "description": "A spotify plugin for InfoPanel",
+  "description": "Integrate Spotify with InfoPanel",
   "category": "plugins",
   "license": "MIT",
-  "tags": ["infopanel", "spotify", "plugin"],
-  "assets": [
-    {
-      "name": "Source Code",
-      "path": "dist/bundle.zip"
-    }
-  ],
+  "tags": ["infopanel", "plugin", "spotify"],
+  "longDescription": "This plugin for InfoPanel lets you show your Spotify now playing information in InfoPanel",
   "changelog": "CHANGELOG.md",
-  "thumbnail": "assets/thumbnail.png",
-  "images": [
-    "assets/screenshot-1.png",
-    "assets/screenshot-2.png"
-  ]
+  "documentation": "https://github.com/F3NN3X/InfoPanel.Spotify"
 }
