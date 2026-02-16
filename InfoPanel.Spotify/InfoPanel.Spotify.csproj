@@ -15,7 +15,7 @@
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <!-- Limit satellite resources to English only -->
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
-    <Version>1.2.2</Version>
+    <Version>1.2.3</Version>
     <!-- Customize output path for Release builds -->
     <OutputPath Condition="'$(Configuration)' == 'Release'">bin\Release\net8.0-windows\InfoPanel.Spotify-v$(Version)\InfoPanel.Spotify</OutputPath>
     <!-- Prevent appending TargetFramework to OutputPath -->
@@ -25,8 +25,6 @@
 	<ItemGroup>
 		<PackageReference Include="ini-parser-netstandard" Version="2.5.2" />
 		<PackageReference Include="SpotifyAPI.Web.Auth" Version="7.2.1" />
-		<PackageReference Include="System.Collections.Concurrent" Version="4.3.0" />
-		<PackageReference Include="System.Net.Http" Version="4.3.4" />
 	</ItemGroup>
 
 	<ItemGroup>

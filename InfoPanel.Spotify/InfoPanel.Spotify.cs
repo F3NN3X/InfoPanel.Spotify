@@ -4,13 +4,17 @@ using InfoPanel.Plugins;
 using InfoPanel.Spotify.Models;
 using InfoPanel.Spotify.Services;
 using IniParser;
+using SpotifyAPI.Web;
 using IniParser.Model;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.2.2
+ * Version: 1.2.3
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
+ *   - v1.2.3 (February 16, 2026): Code quality audit — security, resource leaks, and best practices.
+ *     - **Changes**: Redacted sensitive token data from debug logs, fixed event handler leak and CTS disposal on reentrant Initialize, removed redundant NuGet packages, replaced new Random() with Random.Shared, fixed CutString edge case for small MaxDisplayLength, consolidated config file writes, improved release workflow robustness, added token file and IDE artifacts to .gitignore.
+ *     - **Purpose**: Hardens security, prevents resource leaks, and improves code quality without functional changes.
  *   - v1.2.1 (September 19, 2025): Added playback state sensor for real-time state monitoring.
  *     - **Changes**: Added PluginSensor for playback state (0=Not Playing, 1=Paused, 2=Playing), integrated state updates in OnPlaybackUpdated method.
  *     - **Purpose**: Enables InfoPanel automation and monitoring based on Spotify playback state, provides precise state differentiation for external integrations.
@@ -76,7 +80,7 @@ public sealed class SpotifyPlugin : BasePlugin
 
     // Constructor: Initializes the plugin with metadata
     public SpotifyPlugin()
-        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.2")
+        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.3")
     {
         _refreshCancellationTokenSource = new CancellationTokenSource();
     }
@@ -92,6 +96,7 @@ public sealed class SpotifyPlugin : BasePlugin
         {
             _refreshCancellationTokenSource.Cancel();
         }
+        _refreshCancellationTokenSource.Dispose();
         _refreshCancellationTokenSource = new CancellationTokenSource();
 
         Assembly assembly = Assembly.GetExecutingAssembly();
@@ -113,13 +118,29 @@ public sealed class SpotifyPlugin : BasePlugin
             return;
         }
 
+        // Unsubscribe event handlers from previous services
+        if (_authService != null)
+        {
+            _authService.AuthStateChanged -= OnAuthStateChanged;
+            _authService.ClientInitialized -= OnClientInitialized;
+        }
+        if (_playbackService != null)
+        {
+            _playbackService.PlaybackUpdated -= OnPlaybackUpdated;
+            _playbackService.PlaybackError -= OnPlaybackError;
+        }
+
+        // Clean up previous services for reentrancy
+        _authService?.Close();
+        _playbackService?.Reset();
+
         // Initialize services
         _authService = new SpotifyAuthService(_clientID, _tokenFilePath, _callbackPort);
         _playbackService = new SpotifyPlaybackService(_rateLimiter);
 
-        // Set up event handlers
-        _authService.AuthStateChanged += (sender, state) => _authState.Value = (float)state;
-        _authService.ClientInitialized += (sender, client) => _playbackService.SetClient(client);
+        // Subscribe event handlers
+        _authService.AuthStateChanged += OnAuthStateChanged;
+        _authService.ClientInitialized += OnClientInitialized;
         _playbackService.PlaybackUpdated += OnPlaybackUpdated;
         _playbackService.PlaybackError += OnPlaybackError;
 
@@ -197,13 +218,15 @@ public sealed class SpotifyPlugin : BasePlugin
                 config = parser.Parser.Parse(fileContent);
 
                 _clientID = config["Spotify Plugin"]["ClientID"];
+                bool configUpdated = false;
+
                 if (!config["Spotify Plugin"].ContainsKey("MaxDisplayLength") ||
                     !int.TryParse(config["Spotify Plugin"]["MaxDisplayLength"], out int maxLength) ||
                     maxLength <= 0)
                 {
                     config["Spotify Plugin"]["MaxDisplayLength"] = "20";
                     _maxDisplayLength = 20;
-                    parser.WriteFile(_configFilePath, config);
+                    configUpdated = true;
                     Debug.WriteLine("MaxDisplayLength added or corrected to 20 in config.");
                 }
                 else
@@ -218,7 +241,7 @@ public sealed class SpotifyPlugin : BasePlugin
                 {
                     config["Spotify Plugin"]["CallbackPort"] = SpotifyAuthService.DefaultCallbackPort.ToString();
                     _callbackPort = SpotifyAuthService.DefaultCallbackPort;
-                    parser.WriteFile(_configFilePath, config);
+                    configUpdated = true;
                     Debug.WriteLine($"CallbackPort added or corrected to {SpotifyAuthService.DefaultCallbackPort} in config.");
                 }
                 else
@@ -232,7 +255,6 @@ public sealed class SpotifyPlugin : BasePlugin
                 _noTrackArtistMessage = config["Spotify Plugin"]["NoTrackArtistMessage"] ?? "-";
 
                 // Add missing message settings to config if they don't exist
-                bool configUpdated = false;
                 if (!config["Spotify Plugin"].ContainsKey("NoTrackMessage"))
                 {
                     config["Spotify Plugin"]["NoTrackMessage"] = _noTrackMessage;
@@ -251,7 +273,7 @@ public sealed class SpotifyPlugin : BasePlugin
                 if (configUpdated)
                 {
                     parser.WriteFile(_configFilePath, config);
-                    Debug.WriteLine("Added missing message settings to config.");
+                    Debug.WriteLine("Added missing settings to config.");
                 }
 
 #if DEBUG
@@ -394,6 +416,19 @@ public sealed class SpotifyPlugin : BasePlugin
         {
             _refreshCancellationTokenSource.Cancel();
         }
+        _refreshCancellationTokenSource.Dispose();
+
+        // Unsubscribe event handlers before cleanup
+        if (_authService != null)
+        {
+            _authService.AuthStateChanged -= OnAuthStateChanged;
+            _authService.ClientInitialized -= OnClientInitialized;
+        }
+        if (_playbackService != null)
+        {
+            _playbackService.PlaybackUpdated -= OnPlaybackUpdated;
+            _playbackService.PlaybackError -= OnPlaybackError;
+        }
 
         _authService?.Close();
         _playbackService?.Reset();
@@ -427,6 +462,14 @@ public sealed class SpotifyPlugin : BasePlugin
             await _playbackService.GetCurrentPlaybackAsync();
         }
     }
+
+    // Handle auth state changes
+    private void OnAuthStateChanged(object? sender, AuthState state) =>
+        _authState.Value = (float)state;
+
+    // Handle client initialization
+    private void OnClientInitialized(object? sender, SpotifyClient client) =>
+        _playbackService?.SetClient(client);
 
     // Handle playback updates
     private void OnPlaybackUpdated(object? sender, PlaybackInfo info)
@@ -484,7 +527,10 @@ public sealed class SpotifyPlugin : BasePlugin
     // Truncates a string to MaxDisplayLength, appending "..." if needed
     private string CutString(string input)
     {
-        return input.Length > _maxDisplayLength ? input.Substring(0, _maxDisplayLength - 3) + "..." : input;
+        if (_maxDisplayLength < 4)
+            return input.Length > _maxDisplayLength ? input[.._maxDisplayLength] : input;
+
+        return input.Length > _maxDisplayLength ? $"{input[..(_maxDisplayLength - 3)]}..." : input;
     }
 
     // Resets UI elements to default values with provided message

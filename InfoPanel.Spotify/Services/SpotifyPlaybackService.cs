@@ -360,7 +360,7 @@ public sealed class SpotifyPlaybackService
                 {
                     Debug.WriteLine($"Rate limit hit, waiting {delay.TotalSeconds}s. Attempt {attempts}/{maxAttempts}");
                     await Task.Delay(delay);
-                    delay = TimeSpan.FromSeconds(Math.Min(MaxDelaySeconds, (int)delay.TotalSeconds * 2 + new Random().Next(1, 3)));
+                    delay = TimeSpan.FromSeconds(Math.Min(MaxDelaySeconds, (int)delay.TotalSeconds * 2 + Random.Shared.Next(1, 3)));
                 }
             }
             catch (APIException apiEx)
@@ -371,7 +371,7 @@ public sealed class SpotifyPlaybackService
                 {
                     Debug.WriteLine($"API Error: {apiEx.Message}. Retrying after 1s. Attempt {attempts}/{maxAttempts}");
                     await Task.Delay(TimeSpan.FromSeconds(1));
-                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + new Random().Next(1, 2));
+                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + Random.Shared.Next(1, 2));
                 }
             }
             catch (HttpRequestException httpEx)
@@ -382,7 +382,7 @@ public sealed class SpotifyPlaybackService
                 {
                     Debug.WriteLine($"HTTP Error: {httpEx.Message}. Retrying after 1s. Attempt {attempts}/{maxAttempts}");
                     await Task.Delay(TimeSpan.FromSeconds(1));
-                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + new Random().Next(1, 2));
+                    delay = TimeSpan.FromSeconds((int)delay.TotalSeconds + Random.Shared.Next(1, 2));
                 }
             }
         }
