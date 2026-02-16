@@ -17,25 +17,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Checkout InfoPanel (for plugin interface)
-      uses: actions/checkout@v4
-      with:
-        repository: habibrehmansg/infopanel
-        path: infopanel
-
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-
-    - name: Patch project reference for CI
-      shell: pwsh
-      run: |
-        $csproj = "InfoPanel.Spotify/InfoPanel.Spotify.csproj"
-        $content = Get-Content $csproj -Raw
-        $content = $content -replace 'E:\\GitHub\\PublicRepos\\infopanel\\InfoPanel\.Plugins\\InfoPanel\.Plugins\.csproj', '${{ github.workspace }}\infopanel\InfoPanel.Plugins\InfoPanel.Plugins.csproj'
-        Set-Content -Path $csproj -Value $content
-        Write-Host "Patched project reference to CI path"
 
     - name: Restore dependencies
       run: dotnet restore InfoPanel.Spotify/InfoPanel.Spotify.csproj
