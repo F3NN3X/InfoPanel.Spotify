@@ -4,6 +4,7 @@ using InfoPanel.Plugins;
 using InfoPanel.Spotify.Models;
 using InfoPanel.Spotify.Services;
 using IniParser;
+using SpotifyAPI.Web;
 using IniParser.Model;
 
 /*
@@ -92,6 +93,7 @@ public sealed class SpotifyPlugin : BasePlugin
         {
             _refreshCancellationTokenSource.Cancel();
         }
+        _refreshCancellationTokenSource.Dispose();
         _refreshCancellationTokenSource = new CancellationTokenSource();
 
         Assembly assembly = Assembly.GetExecutingAssembly();
@@ -113,13 +115,17 @@ public sealed class SpotifyPlugin : BasePlugin
             return;
         }
 
+        // Clean up previous services for reentrancy
+        _authService?.Close();
+        _playbackService?.Reset();
+
         // Initialize services
         _authService = new SpotifyAuthService(_clientID, _tokenFilePath, _callbackPort);
         _playbackService = new SpotifyPlaybackService(_rateLimiter);
 
-        // Set up event handlers
-        _authService.AuthStateChanged += (sender, state) => _authState.Value = (float)state;
-        _authService.ClientInitialized += (sender, client) => _playbackService.SetClient(client);
+        // Subscribe event handlers
+        _authService.AuthStateChanged += OnAuthStateChanged;
+        _authService.ClientInitialized += OnClientInitialized;
         _playbackService.PlaybackUpdated += OnPlaybackUpdated;
         _playbackService.PlaybackError += OnPlaybackError;
 
@@ -394,6 +400,7 @@ public sealed class SpotifyPlugin : BasePlugin
         {
             _refreshCancellationTokenSource.Cancel();
         }
+        _refreshCancellationTokenSource.Dispose();
 
         _authService?.Close();
         _playbackService?.Reset();
@@ -427,6 +434,14 @@ public sealed class SpotifyPlugin : BasePlugin
             await _playbackService.GetCurrentPlaybackAsync();
         }
     }
+
+    // Handle auth state changes
+    private void OnAuthStateChanged(object? sender, AuthState state) =>
+        _authState.Value = (float)state;
+
+    // Handle client initialization
+    private void OnClientInitialized(object? sender, SpotifyClient client) =>
+        _playbackService?.SetClient(client);
 
     // Handle playback updates
     private void OnPlaybackUpdated(object? sender, PlaybackInfo info)
