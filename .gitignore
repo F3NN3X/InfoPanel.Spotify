@@ -13,3 +13,7 @@
 
 # Ignore VSCode settings directory
 .vscode/
+
+CLAUDE.md
+
+*.log

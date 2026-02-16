@@ -15,7 +15,7 @@
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <!-- Limit satellite resources to English only -->
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
-    <Version>1.2.1</Version>
+    <Version>1.2.2</Version>
     <!-- Customize output path for Release builds -->
     <OutputPath Condition="'$(Configuration)' == 'Release'">bin\Release\net8.0-windows\InfoPanel.Spotify-v$(Version)\InfoPanel.Spotify</OutputPath>
     <!-- Prevent appending TargetFramework to OutputPath -->
@@ -37,9 +37,13 @@
 	</ItemGroup>
 	
   <ItemGroup>
-    <None Update="PluginInfo.ini">
+    <None Include="..\PluginInfo.ini">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <TargetPath>PluginInfo.ini</TargetPath>
+    </None>
+    <None Include="..\InfoPanel.Spotify.dll.ini">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <TargetPath>InfoPanel.Spotify.dll.ini</TargetPath>
     </None>
   </ItemGroup>	
 </Project>

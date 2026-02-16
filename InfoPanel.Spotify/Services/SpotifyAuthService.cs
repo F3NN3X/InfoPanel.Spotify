@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using InfoPanel.Spotify.Models;
 using IniParser;
 using IniParser.Model;
@@ -15,6 +17,7 @@ public sealed class SpotifyAuthService
 {
     private readonly string _clientID;
     private readonly string _tokenFilePath;
+    private readonly int _callbackPort;
     private SpotifyClient? _spotifyClient;
     private string? _verifier;
     private EmbedIOAuthServer? _server;
@@ -25,6 +28,7 @@ public sealed class SpotifyAuthService
     private bool _forceInvalidGrant;
 
     // Constants for token management
+    public const int DefaultCallbackPort = 5543;
     public const int TokenExpirationBufferSeconds = 60;
     public const int TokenRefreshCheckIntervalSeconds = 60;
     public const int TokenRefreshMaxRetries = 3;
@@ -41,10 +45,11 @@ public sealed class SpotifyAuthService
     public string? RefreshToken => _refreshToken;
     public string? AccessToken => _accessToken;
 
-    public SpotifyAuthService(string clientID, string tokenFilePath)
+    public SpotifyAuthService(string clientID, string tokenFilePath, int callbackPort = DefaultCallbackPort)
     {
         _clientID = clientID;
         _tokenFilePath = tokenFilePath;
+        _callbackPort = callbackPort;
         _refreshFailed = false;
 
 #if DEBUG
@@ -203,11 +208,20 @@ public sealed class SpotifyAuthService
     {
         try
         {
+            if (!IsPortAvailable(_callbackPort))
+            {
+                Debug.WriteLine($"Port {_callbackPort} is not available. Another process may be using it. " +
+                    $"Change 'CallbackPort' in the plugin INI to use a different port.");
+                OnAuthStateChanged(AuthState.Error);
+                return;
+            }
+
             var (verifier, challenge) = PKCEUtil.GenerateCodes();
             _verifier = verifier;
             _refreshFailed = false; // Reset on manual auth
 
-            _server = new EmbedIOAuthServer(new Uri("http://127.0.0.1:5000/callback"), 5000);
+            var callbackUri = new Uri($"http://127.0.0.1:{_callbackPort}/callback");
+            _server = new EmbedIOAuthServer(callbackUri, _callbackPort);
             _server.AuthorizationCodeReceived += OnAuthorizationCodeReceived;
             _server.Start();
 
@@ -376,10 +390,36 @@ public sealed class SpotifyAuthService
     {
         if (_server != null)
         {
+            try
+            {
+                _server.Stop().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error stopping auth server: {ex.Message}");
+            }
             _server.Dispose();
             _server = null;
         }
         _spotifyClient = null;
+    }
+
+    /// <summary>
+    /// Checks whether a TCP port is available to bind on localhost.
+    /// </summary>
+    private static bool IsPortAvailable(int port)
+    {
+        try
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

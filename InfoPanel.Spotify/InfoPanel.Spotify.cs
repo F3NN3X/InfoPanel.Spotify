@@ -8,7 +8,7 @@ using IniParser.Model;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.2.1
+ * Version: 1.2.2
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
  *   - v1.2.1 (September 19, 2025): Added playback state sensor for real-time state monitoring.
@@ -62,6 +62,7 @@ public sealed class SpotifyPlugin : BasePlugin
     private string? _tokenFilePath;
     private string? _clientID;
     private int _maxDisplayLength = 20;
+    private int _callbackPort = SpotifyAuthService.DefaultCallbackPort;
     private bool _forceInvalidGrant = false; // Explicitly initialize to avoid CS0649 warning
     private string _noTrackMessage = "No music playing"; // Custom message when no track is playing
     private string _pausedMessage = ""; // Custom message when paused (empty = keep track info)
@@ -75,7 +76,7 @@ public sealed class SpotifyPlugin : BasePlugin
 
     // Constructor: Initializes the plugin with metadata
     public SpotifyPlugin()
-        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.1")
+        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.2")
     {
         _refreshCancellationTokenSource = new CancellationTokenSource();
     }
@@ -113,7 +114,7 @@ public sealed class SpotifyPlugin : BasePlugin
         }
 
         // Initialize services
-        _authService = new SpotifyAuthService(_clientID, _tokenFilePath);
+        _authService = new SpotifyAuthService(_clientID, _tokenFilePath, _callbackPort);
         _playbackService = new SpotifyPlaybackService(_rateLimiter);
 
         // Set up event handlers
@@ -177,12 +178,13 @@ public sealed class SpotifyPlugin : BasePlugin
             config = new IniData();
             config["Spotify Plugin"]["ClientID"] = "<your-spotify-client-id>";
             config["Spotify Plugin"]["MaxDisplayLength"] = "20";
+            config["Spotify Plugin"]["CallbackPort"] = SpotifyAuthService.DefaultCallbackPort.ToString();
             config["Spotify Plugin"]["NoTrackMessage"] = "No music playing";
             config["Spotify Plugin"]["PausedMessage"] = "";
             config["Spotify Plugin"]["NoTrackArtistMessage"] = "-";
             config["Spotify Plugin"]["ForceInvalidGrant"] = "false";
             parser.WriteFile(_configFilePath, config);
-            Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, NoTrackMessage, PausedMessage, NoTrackArtistMessage, and ForceInvalidGrant.");
+            Debug.WriteLine("Config file created with placeholder ClientID, MaxDisplayLength, CallbackPort, NoTrackMessage, PausedMessage, NoTrackArtistMessage, and ForceInvalidGrant.");
         }
         else
         {
@@ -207,6 +209,21 @@ public sealed class SpotifyPlugin : BasePlugin
                 else
                 {
                     _maxDisplayLength = maxLength;
+                }
+
+                // Load callback port with fallback and auto-migration
+                if (!config["Spotify Plugin"].ContainsKey("CallbackPort") ||
+                    !int.TryParse(config["Spotify Plugin"]["CallbackPort"], out int port) ||
+                    port is <= 0 or > 65535)
+                {
+                    config["Spotify Plugin"]["CallbackPort"] = SpotifyAuthService.DefaultCallbackPort.ToString();
+                    _callbackPort = SpotifyAuthService.DefaultCallbackPort;
+                    parser.WriteFile(_configFilePath, config);
+                    Debug.WriteLine($"CallbackPort added or corrected to {SpotifyAuthService.DefaultCallbackPort} in config.");
+                }
+                else
+                {
+                    _callbackPort = port;
                 }
 
                 // Load custom messages with fallback defaults
@@ -245,7 +262,7 @@ public sealed class SpotifyPlugin : BasePlugin
                     _forceInvalidGrant = forceInvalid;
                 }
 #endif
-                Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', NoTrackArtistMessage: '{_noTrackArtistMessage}', ForceInvalidGrant: {_forceInvalidGrant}");
+                Debug.WriteLine($"Loaded ClientID: {_clientID}, MaxDisplayLength: {_maxDisplayLength}, CallbackPort: {_callbackPort}, NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', NoTrackArtistMessage: '{_noTrackArtistMessage}', ForceInvalidGrant: {_forceInvalidGrant}");
             }
             catch (Exception ex)
             {

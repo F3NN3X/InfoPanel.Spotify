@@ -2,6 +2,25 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.2.2] - February 16, 2026
+### Fixed
+- **OAuth callback server stuck on port 5000**: The authorization flow would hang after the user authorized in the browser because the `EmbedIOAuthServer` could not bind to port 5000 (used by another process). The `SocketException` was an unobserved task exception that was never surfaced to the caller.
+- **Server not stopped before dispose in `Close()`**: `SpotifyAuthService.Close()` now calls `_server.Stop()` before `_server.Dispose()`, preventing potential resource leaks.
+
+### Added
+- **Configurable callback port**: New `CallbackPort` INI setting (default: `5543`) allows users to change the OAuth redirect port if the default is unavailable. Existing configs are auto-migrated.
+- **Port availability pre-check**: `StartAuthentication()` now probes the port before attempting to start the auth server, logging a clear error message with the config key name if the port is in use.
+
+### Technical Details
+- Added `DefaultCallbackPort = 5543` constant and `_callbackPort` field to `SpotifyAuthService`
+- Added `IsPortAvailable()` helper using `TcpListener` to test port binding on localhost
+- `LoadConfigFile()` auto-migrates existing configs by adding `CallbackPort` if missing
+- Port validation ensures value is between 1 and 65535
+
+### Migration
+- **Spotify Developer Dashboard**: Update redirect URI from `http://127.0.0.1:5000/callback` to `http://127.0.0.1:5543/callback`
+- Existing INI files are automatically updated with the new `CallbackPort=5543` setting
+
 ## [1.2.1] - September 19, 2025
 ### Added
 - **Playback State Sensor**: New `PluginSensor` that provides real-time playback state information
