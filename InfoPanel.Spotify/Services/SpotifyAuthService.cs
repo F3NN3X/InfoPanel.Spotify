@@ -88,7 +88,7 @@ public sealed class SpotifyAuthService
             using var reader = new StreamReader(fileStream);
 
             string fileContent = reader.ReadToEnd();
-            Debug.WriteLine($"Raw .tmp content: {fileContent}");
+            Debug.WriteLine("Token file content loaded successfully.");
 
             var parser = new FileIniDataParser();
             var tokenConfig = parser.Parser.Parse(fileContent);
@@ -139,7 +139,7 @@ public sealed class SpotifyAuthService
     {
         try
         {
-            Debug.WriteLine($"Saving tokens - AccessToken: {accessToken.Substring(0, 10)}..., RefreshToken: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Expiration UTC: {expiration.ToString("o")}");
+            Debug.WriteLine($"Saving tokens - AccessToken: [REDACTED], RefreshToken: {(string.IsNullOrEmpty(_refreshToken) ? "null" : "set")}, Expiration UTC: {expiration.ToString("o")}");
             var parser = new FileIniDataParser();
             IniData tokenConfig = new IniData();
 
@@ -271,7 +271,7 @@ public sealed class SpotifyAuthService
             var initialResponse = await new OAuthClient().RequestToken(
                 new PKCETokenRequest(_clientID, response.Code, _server!.BaseUri, _verifier)
             );
-            Debug.WriteLine($"Received access token: {initialResponse.AccessToken}");
+            Debug.WriteLine("Received access token: [REDACTED]");
             if (!string.IsNullOrEmpty(initialResponse.RefreshToken))
             {
                 _refreshToken = initialResponse.RefreshToken;
