@@ -118,6 +118,18 @@ public sealed class SpotifyPlugin : BasePlugin
             return;
         }
 
+        // Unsubscribe event handlers from previous services
+        if (_authService != null)
+        {
+            _authService.AuthStateChanged -= OnAuthStateChanged;
+            _authService.ClientInitialized -= OnClientInitialized;
+        }
+        if (_playbackService != null)
+        {
+            _playbackService.PlaybackUpdated -= OnPlaybackUpdated;
+            _playbackService.PlaybackError -= OnPlaybackError;
+        }
+
         // Clean up previous services for reentrancy
         _authService?.Close();
         _playbackService?.Reset();
@@ -405,6 +417,18 @@ public sealed class SpotifyPlugin : BasePlugin
             _refreshCancellationTokenSource.Cancel();
         }
         _refreshCancellationTokenSource.Dispose();
+
+        // Unsubscribe event handlers before cleanup
+        if (_authService != null)
+        {
+            _authService.AuthStateChanged -= OnAuthStateChanged;
+            _authService.ClientInitialized -= OnClientInitialized;
+        }
+        if (_playbackService != null)
+        {
+            _playbackService.PlaybackUpdated -= OnPlaybackUpdated;
+            _playbackService.PlaybackError -= OnPlaybackError;
+        }
 
         _authService?.Close();
         _playbackService?.Reset();
