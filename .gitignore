@@ -18,3 +18,13 @@ CLAUDE.md
 
 *.log
 .claude/settings.local.json
+
+# Spotify token file (contains refresh tokens)
+spotifyrefresh.tmp
+
+# IDE and OS artifacts
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+.env
