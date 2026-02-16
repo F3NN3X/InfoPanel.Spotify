@@ -203,13 +203,15 @@ public sealed class SpotifyPlugin : BasePlugin
                 config = parser.Parser.Parse(fileContent);
 
                 _clientID = config["Spotify Plugin"]["ClientID"];
+                bool configUpdated = false;
+
                 if (!config["Spotify Plugin"].ContainsKey("MaxDisplayLength") ||
                     !int.TryParse(config["Spotify Plugin"]["MaxDisplayLength"], out int maxLength) ||
                     maxLength <= 0)
                 {
                     config["Spotify Plugin"]["MaxDisplayLength"] = "20";
                     _maxDisplayLength = 20;
-                    parser.WriteFile(_configFilePath, config);
+                    configUpdated = true;
                     Debug.WriteLine("MaxDisplayLength added or corrected to 20 in config.");
                 }
                 else
@@ -224,7 +226,7 @@ public sealed class SpotifyPlugin : BasePlugin
                 {
                     config["Spotify Plugin"]["CallbackPort"] = SpotifyAuthService.DefaultCallbackPort.ToString();
                     _callbackPort = SpotifyAuthService.DefaultCallbackPort;
-                    parser.WriteFile(_configFilePath, config);
+                    configUpdated = true;
                     Debug.WriteLine($"CallbackPort added or corrected to {SpotifyAuthService.DefaultCallbackPort} in config.");
                 }
                 else
@@ -238,7 +240,6 @@ public sealed class SpotifyPlugin : BasePlugin
                 _noTrackArtistMessage = config["Spotify Plugin"]["NoTrackArtistMessage"] ?? "-";
 
                 // Add missing message settings to config if they don't exist
-                bool configUpdated = false;
                 if (!config["Spotify Plugin"].ContainsKey("NoTrackMessage"))
                 {
                     config["Spotify Plugin"]["NoTrackMessage"] = _noTrackMessage;
@@ -257,7 +258,7 @@ public sealed class SpotifyPlugin : BasePlugin
                 if (configUpdated)
                 {
                     parser.WriteFile(_configFilePath, config);
-                    Debug.WriteLine("Added missing message settings to config.");
+                    Debug.WriteLine("Added missing settings to config.");
                 }
 
 #if DEBUG
@@ -499,7 +500,10 @@ public sealed class SpotifyPlugin : BasePlugin
     // Truncates a string to MaxDisplayLength, appending "..." if needed
     private string CutString(string input)
     {
-        return input.Length > _maxDisplayLength ? input.Substring(0, _maxDisplayLength - 3) + "..." : input;
+        if (_maxDisplayLength < 4)
+            return input.Length > _maxDisplayLength ? input[.._maxDisplayLength] : input;
+
+        return input.Length > _maxDisplayLength ? $"{input[..(_maxDisplayLength - 3)]}..." : input;
     }
 
     // Resets UI elements to default values with provided message
