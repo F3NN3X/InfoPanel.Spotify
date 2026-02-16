@@ -9,9 +9,12 @@ using IniParser.Model;
 
 /*
  * Plugin: Spotify Info - SpotifyPlugin
- * Version: 1.2.2
+ * Version: 1.2.3
  * Description: A plugin for InfoPanel to display current Spotify track information, including track name, artist, album, cover URL, elapsed time, and remaining time. Uses the Spotify Web API with PKCE authentication and updates every 1 second for UI responsiveness, with optimized API calls. Supports PluginSensor for track progression and auth state, and PluginText for cover URL.
  * Changelog:
+ *   - v1.2.3 (February 16, 2026): Code quality audit — security, resource leaks, and best practices.
+ *     - **Changes**: Redacted sensitive token data from debug logs, fixed event handler leak and CTS disposal on reentrant Initialize, removed redundant NuGet packages, replaced new Random() with Random.Shared, fixed CutString edge case for small MaxDisplayLength, consolidated config file writes, improved release workflow robustness, added token file and IDE artifacts to .gitignore.
+ *     - **Purpose**: Hardens security, prevents resource leaks, and improves code quality without functional changes.
  *   - v1.2.1 (September 19, 2025): Added playback state sensor for real-time state monitoring.
  *     - **Changes**: Added PluginSensor for playback state (0=Not Playing, 1=Paused, 2=Playing), integrated state updates in OnPlaybackUpdated method.
  *     - **Purpose**: Enables InfoPanel automation and monitoring based on Spotify playback state, provides precise state differentiation for external integrations.
@@ -77,7 +80,7 @@ public sealed class SpotifyPlugin : BasePlugin
 
     // Constructor: Initializes the plugin with metadata
     public SpotifyPlugin()
-        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.2")
+        : base("spotify-plugin", "Spotify", "Displays the current Spotify track information. Version: 1.2.3")
     {
         _refreshCancellationTokenSource = new CancellationTokenSource();
     }

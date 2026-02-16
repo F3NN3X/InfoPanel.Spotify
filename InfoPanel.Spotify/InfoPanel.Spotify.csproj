@@ -15,7 +15,7 @@
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <!-- Limit satellite resources to English only -->
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
-    <Version>1.2.2</Version>
+    <Version>1.2.3</Version>
     <!-- Customize output path for Release builds -->
     <OutputPath Condition="'$(Configuration)' == 'Release'">bin\Release\net8.0-windows\InfoPanel.Spotify-v$(Version)\InfoPanel.Spotify</OutputPath>
     <!-- Prevent appending TargetFramework to OutputPath -->

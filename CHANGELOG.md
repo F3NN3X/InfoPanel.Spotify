@@ -2,6 +2,20 @@
 
 All notable changes to the SpotifyPlugin for InfoPanel are documented here.
 
+## [1.2.3] - February 16, 2026
+### Fixed
+- **Security: token data in debug logs**: Removed raw token file content, access token substrings, and full access tokens from `Debug.WriteLine` output to prevent credential exposure. Also fixes a latent `Substring(0, 10)` bug that would throw on tokens shorter than 10 characters.
+- **Event handler leak on reentrant Initialize**: Converted lambda event handlers to named methods so they can be properly managed. Added cleanup of previous services before creating new instances on reentrant `Initialize()` calls.
+- **CancellationTokenSource never disposed**: Added `Dispose()` after `Cancel()` in both `Initialize()` and `Close()` to prevent resource leaks.
+- **CutString crash when MaxDisplayLength < 4**: `CutString` would produce a negative index when `_maxDisplayLength` was less than 4. Now gracefully truncates without the "..." suffix in that case.
+
+### Changed
+- **Removed redundant NuGet packages**: Removed `System.Collections.Concurrent` (4.3.0) and `System.Net.Http` (4.3.4) — both are in-box for .NET 8.0.
+- **Use `Random.Shared`**: Replaced 3 instances of `new Random().Next(...)` with `Random.Shared.Next(...)` in `ExecuteWithRetry` to avoid unnecessary allocations.
+- **Consolidated config writes**: Merged multiple individual `parser.WriteFile()` calls in `LoadConfigFile()` into a single write at the end, reducing unnecessary I/O.
+- **Improved release workflow**: Added `-ErrorAction Stop` to `Compress-Archive`, added ZIP existence validation, and tightened tag pattern from `v*` to `v[0-9]+.[0-9]+.[0-9]+`.
+- **Updated .gitignore**: Added `spotifyrefresh.tmp`, `*.suo`, `*.user`, `.DS_Store`, `Thumbs.db`, and `.env`.
+
 ## [1.2.2] - February 16, 2026
 ### Fixed
 - **OAuth callback server stuck on port 5000**: The authorization flow would hang after the user authorized in the browser because the `EmbedIOAuthServer` could not bind to port 5000 (used by another process). The `SocketException` was an unobserved task exception that was never surfaced to the caller.
